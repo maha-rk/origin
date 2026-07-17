@@ -1,2 +1,4 @@
 google-genai
 requests
+google-adk
+a2a-sdk
