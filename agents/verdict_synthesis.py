@@ -12,8 +12,6 @@ established findings into readable prose; it's instructed not to introduce
 claims beyond what Cross-Reference already found, so it can't fabricate
 evidence at the last stage.
 
-Untested against the live Gemini API as of writing — same blocker as
-agents/cross_reference.py.
 """
 
 from __future__ import annotations
@@ -24,6 +22,7 @@ from dataclasses import dataclass, field
 from google import genai
 
 from agents.cross_reference import CrossReferenceFinding, CrossReferenceResult
+from agents.gemini_config import MODEL
 
 
 @dataclass
@@ -120,7 +119,7 @@ Contradicting findings: {json.dumps(contradicting)}
 Gaps: {json.dumps(cross_reference_result.gaps)}"""
 
     response = client.models.generate_content(
-        model="gemini-flash-latest",
+        model=MODEL,
         contents=prompt,
     )
     text = response.text.strip()

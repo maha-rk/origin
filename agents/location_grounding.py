@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 import requests
 from google import genai
 
+from agents.gemini_config import MODEL, make_client
+
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 # Nominatim usage policy requires a descriptive User-Agent and max 1 req/sec.
 USER_AGENT = "origin-claim-investigator/0.1 (contact: mahashrirk@gmail.com)"
@@ -33,6 +35,15 @@ USER_AGENT = "origin-claim-investigator/0.1 (contact: mahashrirk@gmail.com)"
 # through, confirmed by testing against the live API.
 MIN_SITE_PLACE_RANK = 20
 COORDINATE_RE = re.compile(r"^\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*$")
+# Nominatim's search is exact-match-oriented and returns zero results for
+# queries like "near Cubbon Park, Bengaluru" that would resolve fine as
+# "Cubbon Park, Bengaluru" — confirmed against the live API. Gemini's
+# extraction is inconsistent about including this prefix (varies run to
+# run for similar claims), so it's normalized here rather than relying on
+# prompt-only instruction to strip it reliably.
+RELATIONAL_PREFIX_RE = re.compile(
+    r"^(near|close to|adjacent to|next to|around|by)\s+", re.IGNORECASE
+)
 # Candidates within this radius of each other are treated as duplicate OSM
 # records for the same physical place (e.g. a park's polygon and a point
 # inside it), not as genuinely different places to disambiguate between.
@@ -86,7 +97,7 @@ appears or a minimal cleaned version of it, or null if has_location is false>"}}
 Claim: {claim_text!r}"""
 
     response = client.models.generate_content(
-        model="gemini-flash-latest",
+        model=MODEL,
         contents=prompt,
     )
     text = response.text.strip()
@@ -206,6 +217,8 @@ def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
             claim_text=claim_text,
         )
 
+    signal.query_text = RELATIONAL_PREFIX_RE.sub("", signal.query_text).strip()
+
     coord_match = COORDINATE_RE.match(signal.query_text)
     if coord_match:
         lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
@@ -265,7 +278,7 @@ def main() -> None:
     if not claim_text:
         claim_text = input("Claim: ").strip()
 
-    client = genai.Client(api_key=api_key)
+    client = make_client(api_key)
     result = ground_claim(client, claim_text)
 
     print(json.dumps(result.__dict__, indent=2))

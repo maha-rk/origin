@@ -7,9 +7,6 @@ system's actual reasoning depth lives — the upstream agents just fetch data;
 this agent has to judge its relationship to the specific wording of the
 claim, which arithmetic can't do.
 
-Untested against the live Gemini API as of writing (blocked on a free-tier
-quota issue on the developer's account) — built and reviewed against the
-API's documented behavior, same as agents/location_grounding.py's Gemini half.
 """
 
 from __future__ import annotations
@@ -19,6 +16,7 @@ from dataclasses import dataclass, field
 
 from google import genai
 
+from agents.gemini_config import MODEL
 from data_clients.gdacs_client import WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
 
@@ -147,6 +145,16 @@ claim:
   cannot actually measure (e.g. the claim is about emissions reductions, but
   land-use data can only speak to tree cover, not emissions directly)
 
+Watch for negated claims ("no protected areas nearby", "no environmental
+risk", "minimal impact"). The relation must reflect whether the evidence
+confirms or refutes the CLAIM AS STATED, not just whether the evidence
+category itself sounds negative or positive. For example: if the claim says
+"no environmental risk nearby" and the evidence is a flood event found near
+the location, that evidence CONTRADICTS the claim — finding a risk when the
+claim asserts none is a contradiction, not support. Before assigning
+"supports", double check: does this evidence actually make the claim's exact
+wording more likely to be true, after accounting for any negation in it?
+
 Also list "gaps": specific things the claim asserts that NONE of the gathered
 evidence can verify or refute.
 
@@ -165,7 +173,7 @@ Claim and evidence:
 {json.dumps(evidence_bundle, indent=2)}"""
 
     response = client.models.generate_content(
-        model="gemini-flash-latest",
+        model=MODEL,
         contents=prompt,
     )
     text = response.text.strip()
