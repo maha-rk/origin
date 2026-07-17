@@ -1,0 +1,275 @@
+"""Location Grounding Agent.
+
+First agent in the ORIGIN pipeline. Extracts a location signal from raw claim
+text and geocodes it via Nominatim. Deliberately does NOT attempt entity
+resolution (e.g. mapping a company name to one of its facilities) — see
+docs/brief.md for the scope boundary this enforces. If the geocode does not
+resolve with reasonable confidence, it stops and asks the user for a specific
+location rather than guessing harder.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+from dataclasses import dataclass, field
+
+import requests
+from google import genai
+
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+# Nominatim usage policy requires a descriptive User-Agent and max 1 req/sec.
+USER_AGENT = "origin-claim-investigator/0.1 (contact: mahashrirk@gmail.com)"
+# OSM place ranks: country ~4, state ~8, city ~16, suburb/neighbourhood ~20,
+# street ~26, building ~30. Below this rank we treat a match as too coarse
+# to be a "site" even if it's the only candidate. `importance` is NOT used
+# as an accept condition: it measures a place's general prominence, not its
+# granularity, so a well-known country/city scores high on it regardless of
+# how localized the match is (e.g. a bare "India" query gets importance
+# ~0.89) — using it as an OR-alternative to granularity let coarse matches
+# through, confirmed by testing against the live API.
+MIN_SITE_PLACE_RANK = 20
+COORDINATE_RE = re.compile(r"^\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*$")
+# Candidates within this radius of each other are treated as duplicate OSM
+# records for the same physical place (e.g. a park's polygon and a point
+# inside it), not as genuinely different places to disambiguate between.
+DUPLICATE_CLUSTER_RADIUS_KM = 1.0
+
+_last_nominatim_call = 0.0
+
+
+@dataclass
+class LocationSignal:
+    found: bool
+    query_text: str | None = None
+    raw_claim: str = ""
+
+
+@dataclass
+class GeocodeCandidate:
+    display_name: str
+    lat: float
+    lon: float
+    importance: float
+    place_rank: int | None
+    bounding_box: list[float] = field(default_factory=list)
+
+
+@dataclass
+class GroundingResult:
+    resolved: bool
+    reason: str
+    claim_text: str
+    location_query: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    display_name: str | None = None
+    candidates_considered: int = 0
+
+
+def extract_location_signal(client: genai.Client, claim_text: str) -> LocationSignal:
+    prompt = f"""Extract the location signal from this claim, if any is present.
+
+The claim may contain: coordinates, a street address, a place name, or a
+descriptive phrase that names or narrows down a place (e.g. "near Mandya",
+"the proposed site on the Bengaluru-Mysuru highway"). Do NOT infer a location
+from a company or organization name alone — only extract text that names an
+actual place.
+
+Respond with strict JSON only, no markdown fences:
+{{"has_location": true or false, "location_text": "<the location phrase as it
+appears or a minimal cleaned version of it, or null if has_location is false>"}}
+
+Claim: {claim_text!r}"""
+
+    response = client.models.generate_content(
+        model="gemini-flash-latest",
+        contents=prompt,
+    )
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+
+    data = json.loads(text)
+    if not data.get("has_location"):
+        return LocationSignal(found=False, raw_claim=claim_text)
+    return LocationSignal(
+        found=True, query_text=data["location_text"], raw_claim=claim_text
+    )
+
+
+def geocode(query_text: str) -> list[GeocodeCandidate]:
+    global _last_nominatim_call
+    elapsed = time.monotonic() - _last_nominatim_call
+    if elapsed < 1.0:
+        time.sleep(1.0 - elapsed)
+
+    resp = requests.get(
+        NOMINATIM_URL,
+        params={
+            "q": query_text,
+            "format": "jsonv2",
+            "limit": 5,
+            "addressdetails": 0,
+        },
+        headers={"User-Agent": USER_AGENT},
+        timeout=10,
+    )
+    _last_nominatim_call = time.monotonic()
+    resp.raise_for_status()
+    results = resp.json()
+
+    candidates = []
+    for r in results:
+        candidates.append(
+            GeocodeCandidate(
+                display_name=r["display_name"],
+                lat=float(r["lat"]),
+                lon=float(r["lon"]),
+                importance=float(r.get("importance", 0.0)),
+                place_rank=r.get("place_rank"),
+                bounding_box=[float(x) for x in r.get("boundingbox", [])],
+            )
+        )
+    return candidates
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    from math import asin, cos, radians, sin, sqrt
+
+    r = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    )
+    return 2 * r * asin(sqrt(a))
+
+
+def _all_within_radius(candidates: list[GeocodeCandidate], radius_km: float) -> bool:
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            a, b = candidates[i], candidates[j]
+            if _haversine_km(a.lat, a.lon, b.lat, b.lon) > radius_km:
+                return False
+    return True
+
+
+def resolve_with_confidence(
+    candidates: list[GeocodeCandidate],
+) -> GeocodeCandidate | None:
+    """Apply the hard confidence rule from docs/brief.md.
+
+    A single candidate, or several candidates that all cluster within
+    DUPLICATE_CLUSTER_RADIUS_KM of each other (duplicate OSM records for the
+    same physical place, e.g. a park's polygon and a point inside it), are
+    collapsed to the most specific (highest place_rank) one and checked
+    against the granularity gate. Candidates spread across genuinely
+    different places are rejected as ambiguous. Zero results, or a single
+    low-granularity match (city/state/country level), are also rejected.
+    """
+    if not candidates:
+        return None
+
+    if len(candidates) == 1:
+        candidate = candidates[0]
+    elif _all_within_radius(candidates, DUPLICATE_CLUSTER_RADIUS_KM):
+        candidate = max(
+            candidates, key=lambda c: c.place_rank if c.place_rank is not None else -1
+        )
+    else:
+        return None
+
+    granularity_ok = (
+        candidate.place_rank is not None
+        and candidate.place_rank >= MIN_SITE_PLACE_RANK
+    )
+    return candidate if granularity_ok else None
+
+
+def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
+    signal = extract_location_signal(client, claim_text)
+    if not signal.found:
+        return GroundingResult(
+            resolved=False,
+            reason=(
+                "No location signal found in claim text. Please provide a "
+                "specific location (coordinates, address, or place name)."
+            ),
+            claim_text=claim_text,
+        )
+
+    coord_match = COORDINATE_RE.match(signal.query_text)
+    if coord_match:
+        lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
+        return GroundingResult(
+            resolved=True,
+            reason="Claim gave explicit coordinates; geocoding skipped.",
+            claim_text=claim_text,
+            location_query=signal.query_text,
+            lat=lat,
+            lon=lon,
+            display_name=signal.query_text,
+            candidates_considered=0,
+        )
+
+    candidates = geocode(signal.query_text)
+    match = resolve_with_confidence(candidates)
+
+    if match is None:
+        if not candidates:
+            reason = (
+                f"Could not geocode {signal.query_text!r} — no matches found. "
+                "Please provide a more specific location."
+            )
+        else:
+            reason = (
+                f"{signal.query_text!r} resolved to {len(candidates)} ambiguous "
+                "or low-confidence candidates. Please provide a more specific "
+                "location."
+            )
+        return GroundingResult(
+            resolved=False,
+            reason=reason,
+            claim_text=claim_text,
+            location_query=signal.query_text,
+            candidates_considered=len(candidates),
+        )
+
+    return GroundingResult(
+        resolved=True,
+        reason="Resolved with reasonable confidence.",
+        claim_text=claim_text,
+        location_query=signal.query_text,
+        lat=match.lat,
+        lon=match.lon,
+        display_name=match.display_name,
+        candidates_considered=len(candidates),
+    )
+
+
+def main() -> None:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        print("GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
+
+    claim_text = " ".join(sys.argv[1:]).strip()
+    if not claim_text:
+        claim_text = input("Claim: ").strip()
+
+    client = genai.Client(api_key=api_key)
+    result = ground_claim(client, claim_text)
+
+    print(json.dumps(result.__dict__, indent=2))
+
+
+if __name__ == "__main__":
+    main()
