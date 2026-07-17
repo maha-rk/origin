@@ -14,6 +14,7 @@ from google.adk.agents import ParallelAgent, SequentialAgent
 from google.adk.runners import InMemoryRunner
 from google.genai import types as genai_types
 
+from orchestrator.a2a_messages import read_agent_message
 from orchestrator.agents import (
     CrossReferenceStep,
     EcologyStep,
@@ -22,6 +23,7 @@ from orchestrator.agents import (
     VerdictSynthesisStep,
     WaterRiskStep,
 )
+from orchestrator.claims_log import log_investigation
 
 
 def build_pipeline() -> SequentialAgent:
@@ -82,9 +84,17 @@ async def run_investigation(claim_text: str, gemini_api_key: str, gfw_api_key: s
     session = await runner.session_service.get_session(
         app_name="origin", user_id=user_id, session_id=session_id
     )
-    return session.state.get(
+    verdict = session.state.get(
         "verdict", {"resolved": False, "reason": "Pipeline did not produce a verdict."}
     )
+
+    location = None
+    location_message = session.state.get("location_message")
+    if location_message is not None:
+        _, location = read_agent_message(location_message)
+    log_investigation(claim_text, location, verdict)
+
+    return verdict
 
 
 def main() -> None:
