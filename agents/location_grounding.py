@@ -90,6 +90,11 @@ descriptive phrase that names or narrows down a place (e.g. "near Mandya",
 from a company or organization name alone — only extract text that names an
 actual place.
 
+If the claim contains BOTH explicit coordinates AND a place name (e.g. "at
+26.9,70.9 near Jaisalmer"), extract ONLY the coordinates. Coordinates are
+exact; a place name next to them is just orienting context and geocoding it
+instead would throw away precision the claim already gave you.
+
 Respond with strict JSON only, no markdown fences:
 {{"has_location": true or false, "location_text": "<the location phrase as it
 appears or a minimal cleaned version of it, or null if has_location is false>"}}
