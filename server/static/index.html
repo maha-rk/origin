@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ORIGIN</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="brand">
+      <h1>ORIGIN</h1>
+      <p class="tagline">Find the cause, not the symptom.</p>
+    </header>
+
+    <form id="claim-form" class="claim-form">
+      <label for="claim-input">Claim to investigate</label>
+      <textarea
+        id="claim-input"
+        rows="2"
+        placeholder="e.g. this proposed development site near Mandya, Karnataka has no environmental risk"
+        required
+      ></textarea>
+      <button type="submit" id="submit-btn">Investigate</button>
+    </form>
+
+    <section id="location-panel" class="location-panel" hidden>
+      <h2 class="section-label">Site</h2>
+      <div id="map-canvas" class="map"></div>
+      <p id="location-caption" class="location-caption"></p>
+    </section>
+
+    <section id="trace" class="trace" hidden>
+      <h2 class="section-label">Investigation</h2>
+      <ol id="trace-list" class="trace-list"></ol>
+    </section>
+
+    <section id="verdict" class="verdict" hidden>
+      <h2 class="section-label">Verdict</h2>
+
+      <div id="verdict-unresolved" class="unresolved" hidden>
+        <p id="verdict-unresolved-reason"></p>
+      </div>
+
+      <div id="verdict-resolved" hidden>
+        <p id="verdict-summary" class="verdict-summary"></p>
+
+        <div class="confidence">
+          <div class="confidence-row">
+            <span class="confidence-label">Direction</span>
+            <div class="meter"><div id="meter-direction" class="meter-fill"></div></div>
+            <span id="direction-value" class="confidence-value"></span>
+          </div>
+          <div class="confidence-row">
+            <span class="confidence-label">Evidence coverage</span>
+            <div class="meter"><div id="meter-coverage" class="meter-fill"></div></div>
+            <span id="coverage-value" class="confidence-value"></span>
+          </div>
+          <p id="confidence-explanation" class="confidence-explanation"></p>
+        </div>
+
+        <div class="evidence-columns">
+          <div class="evidence-column">
+            <h3>Contradicting evidence</h3>
+            <ul id="contradicting-list" class="evidence-list"></ul>
+          </div>
+          <div class="evidence-column">
+            <h3>Supporting evidence</h3>
+            <ul id="supporting-list" class="evidence-list"></ul>
+          </div>
+        </div>
+
+        <div id="gaps-section" hidden>
+          <h3>Unverified by available evidence</h3>
+          <ul id="gaps-list" class="evidence-list"></ul>
+        </div>
+
+        <p id="sources" class="sources"></p>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -280,8 +280,13 @@ class VerdictSynthesisStep(BaseAgent):
             "summary": verdict.summary,
             "sources": verdict.sources,
         }
+        trace_summary = (
+            f"Verdict ready — {len(verdict.supporting_evidence)} supporting, "
+            f"{len(verdict.contradicting_evidence)} contradicting, "
+            f"{len(verdict.gaps)} gap(s). Full summary below."
+        )
         msg = make_agent_message(
-            self.name, verdict.summary, verdict_dict, state["context_id"]
+            self.name, trace_summary, verdict_dict, state["context_id"]
         )
         yield Event(
             author=self.name,

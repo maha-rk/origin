@@ -169,6 +169,12 @@ Respond with strict JSON only, no markdown fences, in this exact shape:
   "gaps": ["..."]
 }}
 
+For "evidence_source", always use the exact string in that evidence
+category's "source" field below (e.g. "WDPA — World Database on Protected
+Areas") — never the JSON key it's nested under (e.g. "ecology"). This keeps
+citations consistent and human-readable regardless of which internal key the
+pipeline used to organize the evidence.
+
 Claim and evidence:
 {json.dumps(evidence_bundle, indent=2)}"""
 

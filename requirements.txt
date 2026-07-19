@@ -2,3 +2,6 @@ google-genai
 requests
 google-adk
 a2a-sdk
+fastapi
+uvicorn[standard]
+python-dotenv
