@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from google import genai
 
-from agents.gemini_config import MODEL
+from agents.gemini_config import MODEL, generate_with_retry
 from data_clients.gdacs_client import WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
 
@@ -178,10 +178,7 @@ pipeline used to organize the evidence.
 Claim and evidence:
 {json.dumps(evidence_bundle, indent=2)}"""
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-    )
+    response = generate_with_retry(client, MODEL, prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.strip("`")

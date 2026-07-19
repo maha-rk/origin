@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import requests
 from google import genai
 
-from agents.gemini_config import MODEL, make_client
+from agents.gemini_config import MODEL, generate_with_retry, make_client
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 # Nominatim usage policy requires a descriptive User-Agent and max 1 req/sec.
@@ -101,10 +101,7 @@ appears or a minimal cleaned version of it, or null if has_location is false>"}}
 
 Claim: {claim_text!r}"""
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-    )
+    response = generate_with_retry(client, MODEL, prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.strip("`")

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from google import genai
 
 from agents.cross_reference import CrossReferenceFinding, CrossReferenceResult
-from agents.gemini_config import MODEL
+from agents.gemini_config import MODEL, generate_with_retry
 
 
 @dataclass
@@ -118,10 +118,7 @@ Supporting findings: {json.dumps(supporting)}
 Contradicting findings: {json.dumps(contradicting)}
 Gaps: {json.dumps(cross_reference_result.gaps)}"""
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-    )
+    response = generate_with_retry(client, MODEL, prompt)
     text = response.text.strip()
     if text.startswith("```"):
         text = text.strip("`")
