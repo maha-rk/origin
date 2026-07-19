@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from google import genai
 
-from agents.gemini_config import MODEL, generate_with_retry
+from agents.gemini_config import MODEL, generate_json
 from data_clients.gdacs_client import WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
 
@@ -178,21 +178,16 @@ pipeline used to organize the evidence.
 Claim and evidence:
 {json.dumps(evidence_bundle, indent=2)}"""
 
-    response = generate_with_retry(client, MODEL, prompt)
-    text = response.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-
-    data = json.loads(text)
+    data = generate_json(client, MODEL, prompt)
+    # Defensive .get() rather than direct indexing: a single malformed
+    # finding item (missing a key) shouldn't crash the whole investigation
+    # when the other findings are perfectly usable.
     findings = [
         CrossReferenceFinding(
-            evidence_source=f["evidence_source"],
-            relation=f["relation"] if f["relation"] in RELATIONS else "context",
-            explanation=f["explanation"],
-            citation=f["citation"],
+            evidence_source=f.get("evidence_source", "unknown source"),
+            relation=f.get("relation") if f.get("relation") in RELATIONS else "context",
+            explanation=f.get("explanation", ""),
+            citation=f.get("citation", ""),
         )
         for f in data.get("findings", [])
     ]

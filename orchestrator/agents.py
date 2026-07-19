@@ -6,6 +6,16 @@ data_clients/, so orchestration is genuine ADK multi-agent composition
 without reinventing working, verified logic inside a new framework. Every
 handoff between steps goes through orchestrator/a2a_messages.py, not a bare
 session-state value.
+
+Land Analysis, Ecology, and Water Risk call their data sources through the
+real MCP server in mcp_servers/origin_tools.py (see orchestrator/mcp_client.py)
+rather than importing data_clients/ directly — genuine MCP protocol traffic,
+not a decorative server nothing talks to. Location Grounding's geocoding
+call is deliberately left as a direct call: its confidence heuristics
+(relational-prefix stripping, coordinate shortcut, duplicate clustering) are
+delicate and already well-tested, and geocode_location is exposed on the
+same MCP server for external use even though this pipeline doesn't route
+through it internally.
 """
 
 from __future__ import annotations
@@ -17,8 +27,6 @@ from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 
-import data_clients.gdacs_client as gdacs
-import data_clients.gfw_client as gfw
 from agents.gemini_config import make_client
 from agents.cross_reference import (
     CrossReferenceFinding,
@@ -30,6 +38,7 @@ from agents.location_grounding import ground_claim
 from agents.verdict_synthesis import synthesize_verdict
 from data_clients.gdacs_client import DisasterEvent, WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
+from orchestrator import mcp_client
 from orchestrator.a2a_messages import make_agent_message, read_agent_message
 
 LAND_RADIUS_KM = 5.0
@@ -91,14 +100,12 @@ class LandAnalysisStep(BaseAgent):
             return
 
         _, location = read_agent_message(state["location_message"])
-        loss = await asyncio.to_thread(
-            gfw.get_tree_cover_loss,
+        loss = await mcp_client.call_tool(
+            "get_tree_cover_loss",
+            {"lat": location["lat"], "lon": location["lon"], "radius_km": LAND_RADIUS_KM},
             state["gfw_api_key"],
-            location["lat"],
-            location["lon"],
-            LAND_RADIUS_KM,
         )
-        payload = {"loss_by_year": [vars(y) for y in loss], "radius_km": LAND_RADIUS_KM}
+        payload = {"loss_by_year": loss, "radius_km": LAND_RADIUS_KM}
         summary = (
             f"Found {len(loss)} year(s) of tree cover loss data within "
             f"{LAND_RADIUS_KM}km."
@@ -120,15 +127,13 @@ class EcologyStep(BaseAgent):
             return
 
         _, location = read_agent_message(state["location_message"])
-        areas = await asyncio.to_thread(
-            gfw.get_nearby_protected_areas,
+        areas = await mcp_client.call_tool(
+            "get_protected_areas",
+            {"lat": location["lat"], "lon": location["lon"], "radius_km": ECOLOGY_RADIUS_KM},
             state["gfw_api_key"],
-            location["lat"],
-            location["lon"],
-            ECOLOGY_RADIUS_KM,
         )
         payload = {
-            "protected_areas": [vars(a) for a in areas],
+            "protected_areas": areas,
             "radius_km": ECOLOGY_RADIUS_KM,
         }
         summary = (
@@ -152,24 +157,27 @@ class WaterRiskStep(BaseAgent):
             return
 
         _, location = read_agent_message(state["location_message"])
-        result = await asyncio.to_thread(
-            gdacs.get_events,
-            location["lat"],
-            location["lon"],
-            WATER_RADIUS_KM,
-            WATER_LOOKBACK_DAYS,
+        result = await mcp_client.call_tool(
+            "get_disaster_events",
+            {
+                "lat": location["lat"],
+                "lon": location["lon"],
+                "radius_km": WATER_RADIUS_KM,
+                "days": WATER_LOOKBACK_DAYS,
+            },
+            state["gfw_api_key"],
         )
         payload = {
-            "has_coverage": result.has_coverage,
-            "events": [vars(e) for e in result.events],
+            "has_coverage": result["has_coverage"],
+            "events": result["events"],
             "radius_km": WATER_RADIUS_KM,
             "days": WATER_LOOKBACK_DAYS,
         }
-        if not result.has_coverage:
+        if not result["has_coverage"]:
             summary = "GDACS has no coverage for this location — no signal, not silence."
-        elif result.events:
+        elif result["events"]:
             summary = (
-                f"Found {len(result.events)} disaster event(s) in the last "
+                f"Found {len(result['events'])} disaster event(s) in the last "
                 f"{WATER_LOOKBACK_DAYS} days."
             )
         else:
@@ -196,7 +204,15 @@ class CrossReferenceStep(BaseAgent):
         _, ecology_data = read_agent_message(state["ecology_message"])
         _, water_data = read_agent_message(state["water_message"])
 
-        loss_years = [TreeCoverLossYear(**y) for y in land_data.get("loss_by_year", [])]
+        # Explicit int() cast: A2A messages round-trip through a protobuf
+        # Value, whose JSON mapping has no integer type — every number comes
+        # back as a float (confirmed: year=2001 becomes 2001.0), which would
+        # otherwise leak into evidence bundles and Gemini-generated
+        # citations as "in 2001.0" instead of "in 2001".
+        loss_years = [
+            TreeCoverLossYear(year=int(y["year"]), loss_area_ha=float(y["loss_area_ha"]))
+            for y in land_data.get("loss_by_year", [])
+        ]
         areas = [ProtectedArea(**a) for a in ecology_data.get("protected_areas", [])]
         water_query = WaterRiskQuery(
             has_coverage=water_data.get("has_coverage", False),

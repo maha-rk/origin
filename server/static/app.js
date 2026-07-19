@@ -173,6 +173,11 @@ function renderVerdict(verdict) {
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
+  // Guards against a stray double-submit (e.g. Enter key plus a click
+  // landing in the same tick) starting a second EventSource while the
+  // first is still streaming — two concurrent streams would interleave
+  // updates to the same DOM elements.
+  if (submitBtn.disabled) return;
   const claim = input.value.trim();
   if (!claim) return;
 

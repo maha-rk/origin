@@ -92,34 +92,57 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
     )
 
     seen_keys: set[str] = set()
-    async for event in runner.run_async(
-        user_id=user_id,
-        session_id=session_id,
-        new_message=genai_types.Content(
-            role="user", parts=[genai_types.Part(text=claim_text)]
-        ),
-    ):
-        delta = event.actions.state_delta if event.actions else {}
-        for key, label in _MESSAGE_KEYS:
-            if key in delta and key not in seen_keys:
-                seen_keys.add(key)
-                summary, data = read_agent_message(delta[key])
-                progress = {"type": "progress", "agent": label, "summary": summary}
-                # Carry map-relevant fields for the frontend's location panel —
-                # coordinates once resolved, then each agent's search radius so
-                # the map can show exactly what area was actually checked.
-                if key == "location_message" and data.get("resolved"):
-                    progress["lat"] = data.get("lat")
-                    progress["lon"] = data.get("lon")
-                elif key in ("land_message", "ecology_message", "water_message"):
-                    progress["radius_km"] = data.get("radius_km")
-                yield progress
-        if "pipeline_failed" in delta:
-            yield {
-                "type": "progress",
-                "agent": "Pipeline",
-                "summary": f"Stopped: {delta.get('failure_reason', 'unresolved location')}",
-            }
+    pipeline_error: Exception | None = None
+    try:
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=genai_types.Content(
+                role="user", parts=[genai_types.Part(text=claim_text)]
+            ),
+        ):
+            delta = event.actions.state_delta if event.actions else {}
+            for key, label in _MESSAGE_KEYS:
+                if key in delta and key not in seen_keys:
+                    seen_keys.add(key)
+                    summary, data = read_agent_message(delta[key])
+                    progress = {"type": "progress", "agent": label, "summary": summary}
+                    # Carry map-relevant fields for the frontend's location panel —
+                    # coordinates once resolved, then each agent's search radius so
+                    # the map can show exactly what area was actually checked.
+                    if key == "location_message" and data.get("resolved"):
+                        progress["lat"] = data.get("lat")
+                        progress["lon"] = data.get("lon")
+                    elif key in ("land_message", "ecology_message", "water_message"):
+                        progress["radius_km"] = data.get("radius_km")
+                    yield progress
+            if "pipeline_failed" in delta:
+                yield {
+                    "type": "progress",
+                    "agent": "Pipeline",
+                    "summary": f"Stopped: {delta.get('failure_reason', 'unresolved location')}",
+                }
+    except Exception as e:  # noqa: BLE001 - deliberately broad: any failure
+        # anywhere in the agent graph (malformed LLM JSON, a data-source
+        # outage, an MCP subprocess crash) must still produce a real verdict
+        # event, not a dead SSE connection the frontend can only interpret
+        # as "lost connection." A live demo hitting an unlucky transient
+        # failure should degrade to an honest "investigation failed"
+        # message, not a silent hang.
+        pipeline_error = e
+
+    if pipeline_error is not None:
+        yield {
+            "type": "progress",
+            "agent": "Pipeline",
+            "summary": f"Investigation failed: {pipeline_error}",
+        }
+        verdict = {
+            "resolved": False,
+            "reason": f"Investigation failed unexpectedly: {pipeline_error}",
+        }
+        yield {"type": "verdict", "data": verdict}
+        return
 
     session = await runner.session_service.get_session(
         app_name="origin", user_id=user_id, session_id=session_id
@@ -132,7 +155,11 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
     location_message = session.state.get("location_message")
     if location_message is not None:
         _, location = read_agent_message(location_message)
-    log_investigation(claim_text, location, verdict)
+
+    try:
+        log_investigation(claim_text, location, verdict)
+    except Exception as e:  # noqa: BLE001 - logging must never block verdict delivery
+        print(f"claims_log write failed (non-fatal): {e}")
 
     yield {"type": "verdict", "data": verdict}
 

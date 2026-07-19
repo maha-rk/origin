@@ -5,3 +5,4 @@ a2a-sdk
 fastapi
 uvicorn[standard]
 python-dotenv
+mcp

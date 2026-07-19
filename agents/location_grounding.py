@@ -17,10 +17,10 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-import requests
 from google import genai
 
-from agents.gemini_config import MODEL, generate_with_retry, make_client
+from agents.gemini_config import MODEL, generate_json, make_client
+from data_clients.http_retry import request_with_retry
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 # Nominatim usage policy requires a descriptive User-Agent and max 1 req/sec.
@@ -101,20 +101,18 @@ appears or a minimal cleaned version of it, or null if has_location is false>"}}
 
 Claim: {claim_text!r}"""
 
-    response = generate_with_retry(client, MODEL, prompt)
-    text = response.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
+    data = generate_json(client, MODEL, prompt)
 
-    data = json.loads(text)
-    if not data.get("has_location"):
+    # Treat a self-contradictory response (has_location=True but no usable
+    # location_text) the same as has_location=False rather than crashing —
+    # an LLM occasionally returning null/empty text alongside true is a real
+    # observed failure mode, and the safe fallback is exactly what
+    # has_location=False already does: ask the user for a location instead
+    # of guessing or raising.
+    location_text = data.get("location_text")
+    if not data.get("has_location") or not isinstance(location_text, str) or not location_text.strip():
         return LocationSignal(found=False, raw_claim=claim_text)
-    return LocationSignal(
-        found=True, query_text=data["location_text"], raw_claim=claim_text
-    )
+    return LocationSignal(found=True, query_text=location_text, raw_claim=claim_text)
 
 
 def geocode(query_text: str) -> list[GeocodeCandidate]:
@@ -123,7 +121,8 @@ def geocode(query_text: str) -> list[GeocodeCandidate]:
     if elapsed < 1.0:
         time.sleep(1.0 - elapsed)
 
-    resp = requests.get(
+    resp = request_with_retry(
+        "get",
         NOMINATIM_URL,
         params={
             "q": query_text,

@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import requests
-
 from data_clients.geo_utils import buffer_polygon_wkt
+from data_clients.http_retry import request_with_retry
 
 BASE_URL = "https://www.gdacs.org/gdacsapi/api/events/geteventlist/eventsbyarea"
 MAX_DAYS = 30
@@ -57,8 +56,8 @@ def get_events(
     """
     days = min(days, MAX_DAYS)
     wkt = buffer_polygon_wkt(lat, lon, radius_km)
-    resp = requests.get(
-        BASE_URL, params={"geometryArea": wkt, "days": days}, timeout=30
+    resp = request_with_retry(
+        "get", BASE_URL, params={"geometryArea": wkt, "days": days}, timeout=30
     )
     if resp.status_code == 404:
         return WaterRiskQuery(has_coverage=False, events=[])
@@ -67,7 +66,7 @@ def get_events(
 
     events = []
     for feature in body.get("features", []):
-        props = feature["properties"]
+        props = feature.get("properties", {})
         events.append(
             DisasterEvent(
                 event_type=props.get("eventtype", ""),

@@ -15,6 +15,7 @@ exists specifically so a live demo doesn't die mid-recording on a transient
 rate limit.
 """
 
+import json
 import time
 
 from google import genai
@@ -51,3 +52,29 @@ def generate_with_retry(client: genai.Client, model: str, contents: str):
             last_error = e
             time.sleep(BASE_DELAY_SECONDS * (2**attempt))
     raise last_error
+
+
+def generate_json(client: genai.Client, model: str, prompt: str) -> dict:
+    """generate_with_retry, then parse the response as strict JSON.
+
+    Every prompt in this codebase asks Gemini for strict JSON, but nothing
+    guarantees it complies — occasional stray prose or truncated output is
+    a real, observed failure mode, not a hypothetical. Centralizing the
+    fence-stripping + parsing here means all three call sites raise the
+    same clear, diagnosable error instead of three separate bare
+    JSONDecodeError/KeyError crashes with no context on what Gemini
+    actually returned.
+    """
+    response = generate_with_retry(client, model, prompt)
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Gemini did not return valid JSON ({e}). Raw response: {text[:500]!r}"
+        ) from e

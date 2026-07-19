@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from google import genai
 
 from agents.cross_reference import CrossReferenceFinding, CrossReferenceResult
-from agents.gemini_config import MODEL, generate_with_retry
+from agents.gemini_config import MODEL, generate_json
 
 
 @dataclass
@@ -118,14 +118,16 @@ Supporting findings: {json.dumps(supporting)}
 Contradicting findings: {json.dumps(contradicting)}
 Gaps: {json.dumps(cross_reference_result.gaps)}"""
 
-    response = generate_with_retry(client, MODEL, prompt)
-    text = response.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    summary = json.loads(text)["summary"]
+    data = generate_json(client, MODEL, prompt)
+    # Fall back to a deterministic summary rather than crashing if Gemini's
+    # JSON is missing the one key we asked for — the counts are already
+    # known from Cross-Reference, so a plain-but-correct fallback is always
+    # available and strictly better than losing the verdict entirely.
+    summary = data.get("summary") or (
+        f"{len(supporting)} supporting and {len(contradicting)} contradicting "
+        f"finding(s) were identified; {len(cross_reference_result.gaps)} aspect(s) "
+        "of the claim could not be verified from available evidence."
+    )
 
     return Verdict(
         claim=claim_text,

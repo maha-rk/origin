@@ -14,9 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import requests
-
 from data_clients.geo_utils import buffer_polygon_geojson
+from data_clients.http_retry import request_with_retry
 
 BASE_URL = "https://data-api.globalforestwatch.org"
 
@@ -39,8 +38,8 @@ def query_dataset(
     body: dict = {"sql": sql}
     if geometry is not None:
         body["geometry"] = geometry
-    resp = requests.post(
-        url, json=body, headers={"x-api-key": api_key}, timeout=30
+    resp = request_with_retry(
+        "post", url, json=body, headers={"x-api-key": api_key}, timeout=30
     )
     resp.raise_for_status()
     return resp.json()["data"]
@@ -66,12 +65,17 @@ def get_tree_cover_loss(
     begin with" (30% is GFW's own default threshold).
     """
     geometry = point_to_buffer_polygon(lat, lon, radius_km)
+    # int() cast, not just an f-string: min_density_pct isn't user-facing
+    # today, but GFW's query endpoint takes raw SQL text (no parameterized
+    # query support), so this is the one thing standing between a future
+    # caller and injecting arbitrary SQL through this parameter.
+    safe_min_density = int(min_density_pct)
     # Note: an "IS NOT NULL" clause here 422s with "Unsupported filter
     # operator: exists" on GFW's SQL backend, confirmed against the live API.
     sql = (
         "SELECT umd_tree_cover_loss__year AS year, SUM(area__ha) AS loss_area_ha "
         "FROM data "
-        f"WHERE umd_tree_cover_density_2000__threshold >= {min_density_pct} "
+        f"WHERE umd_tree_cover_density_2000__threshold >= {safe_min_density} "
         "GROUP BY umd_tree_cover_loss__year "
         "ORDER BY umd_tree_cover_loss__year"
     )
