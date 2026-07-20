@@ -34,21 +34,36 @@ body {
 }
 
 .page {
-  max-width: 720px;
+  max-width: 880px;
   margin: 0 auto;
-  padding: 4rem 1.5rem 6rem;
+  padding: 4rem 2rem 6rem;
 }
 
 .brand {
   margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 3px double var(--ink);
 }
 
 .brand h1 {
   font-family: var(--serif);
-  font-size: 2rem;
+  font-size: 2.9rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   margin: 0;
+}
+
+/* Case-file card treatment for the major report sections (site, trace,
+   verdict, history) — a hard, unblurred offset shadow rather than a soft
+   drop shadow, so it reads as a stacked paper/index-card edge consistent
+   with the sharp-corner, no-border-radius system rather than a generic
+   "modern UI" glow. */
+.panel {
+  background: #fff;
+  border: 1px solid var(--rule);
+  box-shadow: 7px 7px 0 var(--rule);
+  padding: 1.85rem 2.1rem 2.3rem;
+  margin-bottom: 3.25rem;
 }
 
 .tagline {
@@ -67,9 +82,9 @@ body {
 }
 
 .claim-form label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--ink-faint);
   font-weight: 600;
 }
@@ -81,7 +96,7 @@ body {
   color: var(--ink);
   background: #fff;
   border: 1px solid var(--rule);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.9rem 1rem;
   resize: vertical;
   min-height: 3.4rem;
@@ -92,7 +107,7 @@ body {
   border-color: var(--accent);
 }
 
-.claim-form button {
+.claim-form > button {
   align-self: flex-start;
   font-family: var(--sans);
   font-size: 0.9rem;
@@ -101,42 +116,79 @@ body {
   color: #fff;
   background: var(--accent);
   border: none;
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.65rem 1.4rem;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
 
-.claim-form button:hover {
+.claim-form > button:hover {
   opacity: 0.88;
 }
 
-.claim-form button:disabled {
+.claim-form > button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
+.example-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.example-label {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  margin-right: 0.15rem;
+}
+
+.example-chip {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--rule);
+  padding: 0.3rem 0.65rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.example-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .section-label {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--ink-faint);
-  font-weight: 600;
-  margin: 0 0 1rem;
-  padding-bottom: 0.5rem;
+  color: var(--ink-soft);
+  font-weight: 700;
+  margin: 0 0 1.25rem;
+  padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--rule);
 }
 
 .location-panel {
-  margin-bottom: 3rem;
   animation: rise 0.4s ease;
 }
 
 .map {
   height: 320px;
   border: 1px solid var(--rule);
-  border-radius: 3px;
+  border-radius: 0;
   background: var(--rule);
+}
+
+.map-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .location-caption {
@@ -146,8 +198,61 @@ body {
   color: var(--ink-faint);
 }
 
-.trace {
-  margin-bottom: 3rem;
+.map-legend {
+  list-style: none;
+  display: flex;
+  gap: 1rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+}
+
+.map-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.timelapse-link {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.timelapse-link:hover,
+.timelapse-link:focus-visible {
+  border-bottom-color: var(--accent);
+}
+
+.trace-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.trace-header .section-label {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+.trace-progress {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
 }
 
 .trace-list {
@@ -201,6 +306,55 @@ body {
   font-size: 1.02rem;
 }
 
+.verdict-stamp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Rendered as an actual stamp — bordered box, slight rotation — since this
+   is the single moment the whole investigation builds toward and plain bold
+   text was giving it no more visual weight than a section label. */
+.verdict-stamp {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.4rem 1rem;
+  border: 3px solid currentColor;
+  transform: rotate(-2deg);
+}
+
+.verdict-stamp.contradicts {
+  color: var(--contradict);
+}
+
+.verdict-stamp.supports {
+  color: var(--support);
+}
+
+.verdict-stamp.mixed,
+.verdict-stamp.insufficient {
+  color: var(--ink-faint);
+}
+
+.unresolved-stamp {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  color: var(--contradict);
+}
+
+.verdict-case-id {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
 .verdict-summary {
   font-family: var(--serif);
   font-size: 1.2rem;
@@ -226,18 +380,51 @@ body {
 }
 
 .meter {
-  height: 6px;
+  position: relative;
+  height: 9px;
   background: var(--rule);
-  border-radius: 3px;
-  overflow: hidden;
+  border: 1px solid var(--rule);
+  overflow: visible;
 }
 
 .meter-fill {
   height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-  transition: width 0.5s ease;
+  background: var(--ink-faint);
+  transition: width 0.5s ease, background-color 0.3s ease;
   width: 0%;
+}
+
+/* Direction is polarized (contradicts/supports) and must use the same
+   red/green language as evidence columns and status badges elsewhere —
+   a low score filled in "good" green would visually contradict its own
+   data. Coverage has no such polarity (more evidence isn't "good" or
+   "bad"), so it stays neutral. */
+.meter-fill.contradicts {
+  background: var(--contradict);
+}
+
+.meter-fill.supports {
+  background: var(--support);
+}
+
+.meter-fill.mixed {
+  background: var(--ink-faint);
+}
+
+/* Midpoint tick, sitting just below the bar rather than cutting through
+   it — anchors what "50%" visually means (neutral). A mark drawn inside
+   the bar would lose contrast against whichever fill color happens to sit
+   under it; below the bar it's always against the page background. */
+.meter.has-midpoint::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-top: 3px;
+  width: 1px;
+  height: 4px;
+  background: var(--ink-faint);
+  transform: translateX(-50%);
 }
 
 .confidence-value {
@@ -262,7 +449,8 @@ body {
 }
 
 .evidence-columns h3,
-#gaps-section h3 {
+#gaps-section h3,
+#sub-claims-section h3 {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -284,7 +472,7 @@ body {
   font-size: 0.92rem;
   line-height: 1.5;
   padding: 0.7rem 0.85rem;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .evidence-column:nth-child(1) .evidence-list li {
@@ -330,7 +518,7 @@ body {
 
 .sub-claim-item {
   border: 1px solid var(--rule);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.85rem 1rem;
 }
 
@@ -363,11 +551,6 @@ body {
   border-top: 1px solid var(--rule);
 }
 
-.history {
-  margin-top: 4rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--rule);
-}
 
 .history-list {
   list-style: none;
@@ -383,8 +566,20 @@ body {
   grid-template-columns: 1fr auto auto;
   align-items: baseline;
   gap: 1rem;
-  padding: 0.5rem 0;
+  padding: 0.5rem 0.4rem;
+  margin: 0 -0.4rem;
   font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.history-item:hover,
+.history-item:focus-visible {
+  background: var(--accent-soft);
+}
+
+.history-item:hover .history-claim {
+  color: var(--ink);
 }
 
 .history-claim {
@@ -398,7 +593,7 @@ body {
   font-family: var(--mono);
   font-size: 0.72rem;
   padding: 0.15rem 0.5rem;
-  border-radius: 2px;
+  border-radius: 0;
   white-space: nowrap;
 }
 
@@ -426,6 +621,16 @@ body {
 }
 
 @media (max-width: 560px) {
+  .page {
+    padding: 3rem 1.25rem 4rem;
+  }
+  .panel {
+    padding: 1.4rem 1.25rem 1.75rem;
+    box-shadow: 4px 4px 0 var(--rule);
+  }
+  .brand h1 {
+    font-size: 2.2rem;
+  }
   .evidence-columns {
     grid-template-columns: 1fr;
   }
@@ -436,4 +641,16 @@ body {
   .confidence-row {
     grid-template-columns: 6.5rem 1fr 3rem;
   }
+  .history-item {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+  .history-claim {
+    white-space: normal;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

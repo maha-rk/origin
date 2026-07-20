@@ -180,7 +180,8 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
         _, location = read_agent_message(location_message)
 
     try:
-        log_investigation(claim_text, location, verdict)
+        row = log_investigation(claim_text, location, verdict)
+        verdict = {**verdict, "investigation_id": row["investigation_id"]}
     except Exception as e:  # noqa: BLE001 - logging must never block verdict delivery
         print(f"claims_log write failed (non-fatal): {e}")
 

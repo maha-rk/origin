@@ -23,33 +23,56 @@
         required
       ></textarea>
       <button type="submit" id="submit-btn">Investigate</button>
+      <div class="example-chips">
+        <span class="example-label">Try:</span>
+        <button type="button" class="example-chip" data-claim="this proposed development site at 26.6631,93.3678 reduced emissions by 40% and has no protected areas nearby">Compound claim, Assam</button>
+        <button type="button" class="example-chip" data-claim="the palm oil expansion at -9.98,-63.0 in Rondonia, Brazil caused no deforestation">Deforestation, Brazil</button>
+        <button type="button" class="example-chip" data-claim="the solar farm proposed near Mandya, Karnataka">Ambiguous location</button>
+      </div>
     </form>
 
-    <section id="location-panel" class="location-panel" hidden>
+    <section id="location-panel" class="location-panel panel" hidden>
       <h2 class="section-label">Site</h2>
       <div id="map-canvas" class="map"></div>
-      <p id="location-caption" class="location-caption"></p>
+      <div class="map-footer">
+        <p id="location-caption" class="location-caption"></p>
+        <ul class="map-legend">
+          <li><span class="legend-swatch" style="background:#a9762c"></span>Land Analysis</li>
+          <li><span class="legend-swatch" style="background:#2f5d43"></span>Ecology</li>
+          <li><span class="legend-swatch" style="background:#3a6a8c"></span>Water Risk</li>
+          <li><span class="legend-swatch" style="background:#e5007d"></span>Tree cover loss (UMD/GFW)</li>
+        </ul>
+        <a id="timelapse-link" class="timelapse-link" href="#" target="_blank" rel="noopener">View change over time on Google Earth Timelapse &rarr;</a>
+      </div>
     </section>
 
-    <section id="trace" class="trace" hidden>
-      <h2 class="section-label">Investigation</h2>
+    <section id="trace" class="trace panel" hidden>
+      <div class="trace-header">
+        <h2 class="section-label">Investigation</h2>
+        <span id="trace-progress" class="trace-progress"></span>
+      </div>
       <ol id="trace-list" class="trace-list"></ol>
     </section>
 
-    <section id="verdict" class="verdict" hidden>
+    <section id="verdict" class="verdict panel" hidden>
       <h2 class="section-label">Verdict</h2>
 
       <div id="verdict-unresolved" class="unresolved" hidden>
+        <span class="verdict-stamp unresolved-stamp">Unresolved</span>
         <p id="verdict-unresolved-reason"></p>
       </div>
 
       <div id="verdict-resolved" hidden>
+        <div class="verdict-stamp-row">
+          <span id="verdict-stamp" class="verdict-stamp"></span>
+          <span id="verdict-case-id" class="verdict-case-id"></span>
+        </div>
         <p id="verdict-summary" class="verdict-summary"></p>
 
         <div class="confidence">
           <div class="confidence-row">
             <span class="confidence-label">Direction</span>
-            <div class="meter"><div id="meter-direction" class="meter-fill"></div></div>
+            <div id="meter-direction-track" class="meter has-midpoint"><div id="meter-direction" class="meter-fill"></div></div>
             <span id="direction-value" class="confidence-value"></span>
           </div>
           <div class="confidence-row">
@@ -85,7 +108,7 @@
       </div>
     </section>
 
-    <section id="history" class="history" hidden>
+    <section id="history" class="history panel" hidden>
       <h2 class="section-label">Recent investigations</h2>
       <ul id="history-list" class="history-list"></ul>
     </section>

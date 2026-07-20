@@ -1,6 +1,7 @@
 const form = document.getElementById("claim-form");
 const input = document.getElementById("claim-input");
 const submitBtn = document.getElementById("submit-btn");
+const exampleChips = document.querySelectorAll(".example-chip");
 
 const traceSection = document.getElementById("trace");
 const traceList = document.getElementById("trace-list");
@@ -10,6 +11,8 @@ const unresolvedBox = document.getElementById("verdict-unresolved");
 const unresolvedReason = document.getElementById("verdict-unresolved-reason");
 const resolvedBox = document.getElementById("verdict-resolved");
 
+const verdictStamp = document.getElementById("verdict-stamp");
+const verdictCaseId = document.getElementById("verdict-case-id");
 const verdictSummary = document.getElementById("verdict-summary");
 const meterDirection = document.getElementById("meter-direction");
 const meterCoverage = document.getElementById("meter-coverage");
@@ -26,9 +29,17 @@ const sources = document.getElementById("sources");
 
 const locationPanel = document.getElementById("location-panel");
 const locationCaption = document.getElementById("location-caption");
+const timelapseLink = document.getElementById("timelapse-link");
 
 const historySection = document.getElementById("history");
 const historyList = document.getElementById("history-list");
+const traceProgress = document.getElementById("trace-progress");
+
+// Location Grounding, Claim Decomposition, Land Analysis, Ecology, Water
+// Risk, Cross-Reference, Verdict Synthesis — kept in sync with
+// orchestrator/pipeline.py's _MESSAGE_KEYS.
+const TOTAL_AGENTS = 7;
+let completedAgents = 0;
 
 const RADIUS_COLORS = {
   "Land Analysis": "#a9762c",
@@ -72,6 +83,17 @@ function showSite(lat, lon) {
     { attribution: "Esri", maxZoom: 18 }
   ).addTo(map);
 
+  // GFW's own tree-cover-loss tiles (UMD/Hansen dataset), the same layer
+  // used on globalforestwatch.org — public, no API key. 512px tiles, so
+  // Leaflet needs tileSize/zoomOffset set or every tile renders at 2x scale
+  // and misaligns with the 256px basemap grid.
+  L.tileLayer(
+    "https://tiles.globalforestwatch.org/umd_tree_cover_loss/latest/tcd_30/{z}/{x}/{y}.png",
+    { attribution: "Hansen/UMD/GFW", maxZoom: 18, tileSize: 512, zoomOffset: -1, opacity: 0.75 }
+  ).addTo(map);
+
+  timelapseLink.href = `https://earthengine.google.com/timelapse#v=${lat},${lon},9,latLng`;
+
   siteMarker = L.circleMarker([lat, lon], {
     radius: 6,
     color: "#faf8f4",
@@ -110,6 +132,20 @@ function directionStatusClass(score) {
   return "mixed";
 }
 
+function verdictStampInfo(verdict) {
+  const coverage = verdict.confidence?.evidence_coverage ?? 0;
+  const direction = verdict.confidence?.direction_score ?? 0.5;
+  // Zero coverage means no evidence was decisive either way — a distinct
+  // case from "mixed" (which means real evidence pulled in both
+  // directions). Conflating them would misrepresent an absence of
+  // evidence as if it were balanced evidence.
+  if (coverage === 0) return { text: "Insufficient evidence", className: "insufficient" };
+  const cls = directionStatusClass(direction);
+  if (cls === "contradicts") return { text: "Contradicted", className: cls };
+  if (cls === "supports") return { text: "Supported", className: cls };
+  return { text: "Mixed signals", className: cls };
+}
+
 function historyStatusClass(row) {
   if (!row.resolved) return "unresolved";
   return directionStatusClass(row.direction_score);
@@ -136,6 +172,51 @@ function formatRelativeTime(isoString) {
   return `${Math.round(diffHours / 24)}d ago`;
 }
 
+function verdictFromHistoryRow(row) {
+  if (!row.resolved) {
+    return { resolved: false, reason: row.verdict_summary };
+  }
+  let evidence = {};
+  try {
+    evidence = JSON.parse(row.evidence_summary || "{}");
+  } catch (e) {
+    evidence = {};
+  }
+  let sources = [];
+  try {
+    sources = JSON.parse(row.sources || "[]");
+  } catch (e) {
+    sources = [];
+  }
+  return {
+    resolved: true,
+    investigation_id: row.investigation_id,
+    claim: row.claim_text,
+    location: row.location_display_name,
+    confidence: {
+      direction_score: row.direction_score,
+      evidence_coverage: row.evidence_coverage,
+      explanation: "",
+    },
+    supporting_evidence: evidence.supporting || [],
+    contradicting_evidence: evidence.contradicting || [],
+    gaps: evidence.gaps || [],
+    summary: row.verdict_summary,
+    sources,
+    sub_claims: [],
+  };
+}
+
+function showHistoryItem(row) {
+  traceSection.hidden = true;
+  resetMap();
+  if (row.resolved && typeof row.location_lat === "number" && typeof row.location_lon === "number") {
+    showSite(row.location_lat, row.location_lon);
+  }
+  renderVerdict(verdictFromHistoryRow(row));
+  verdictSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function loadHistory() {
   try {
     const resp = await fetch("/api/history?limit=10");
@@ -152,6 +233,8 @@ async function loadHistory() {
     for (const row of rows) {
       const li = document.createElement("li");
       li.className = "history-item";
+      li.tabIndex = 0;
+      li.setAttribute("role", "button");
 
       const claimEl = document.createElement("span");
       claimEl.className = "history-claim";
@@ -169,6 +252,13 @@ async function loadHistory() {
       li.appendChild(claimEl);
       li.appendChild(statusEl);
       li.appendChild(timeEl);
+      li.addEventListener("click", () => showHistoryItem(row));
+      li.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          showHistoryItem(row);
+        }
+      });
       historyList.appendChild(li);
     }
   } catch (e) {
@@ -222,17 +312,27 @@ function renderVerdict(verdict) {
   unresolvedBox.hidden = true;
   resolvedBox.hidden = false;
 
+  const stamp = verdictStampInfo(verdict);
+  verdictStamp.textContent = stamp.text;
+  verdictStamp.className = `verdict-stamp ${stamp.className}`;
+  verdictCaseId.textContent = verdict.investigation_id
+    ? `Case ${verdict.investigation_id.slice(0, 8)}`
+    : "";
+
   verdictSummary.textContent = verdict.summary;
 
   const direction = verdict.confidence?.direction_score ?? 0.5;
   const coverage = verdict.confidence?.evidence_coverage ?? 0;
 
   meterDirection.style.width = `${Math.round(direction * 100)}%`;
+  meterDirection.className = `meter-fill ${directionStatusClass(direction)}`;
   meterCoverage.style.width = `${Math.round(coverage * 100)}%`;
   directionValue.textContent = direction.toFixed(2);
   coverageValue.textContent = `${Math.round(coverage * 100)}%`;
-  confidenceExplanation.textContent =
-    (verdict.confidence?.explanation || "") + ` (${directionLabel(direction)})`;
+  const explanationPrefix = verdict.confidence?.explanation
+    ? `${verdict.confidence.explanation} `
+    : "";
+  confidenceExplanation.textContent = `${explanationPrefix}(${directionLabel(direction)})`;
 
   fillList(contradictingList, verdict.contradicting_evidence, "None found.");
   fillList(supportingList, verdict.supporting_evidence, "None found.");
@@ -283,6 +383,13 @@ function renderVerdict(verdict) {
     : "";
 }
 
+for (const chip of exampleChips) {
+  chip.addEventListener("click", () => {
+    input.value = chip.dataset.claim;
+    form.requestSubmit();
+  });
+}
+
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   // Guards against a stray double-submit (e.g. Enter key plus a click
@@ -300,6 +407,8 @@ form.addEventListener("submit", (e) => {
   traceList.innerHTML = "";
   verdictSection.hidden = true;
   resetMap();
+  completedAgents = 0;
+  traceProgress.textContent = `0 / ${TOTAL_AGENTS}`;
 
   const url = `/api/investigate?claim=${encodeURIComponent(claim)}`;
   const source = new EventSource(url);
@@ -308,6 +417,10 @@ form.addEventListener("submit", (e) => {
     const payload = JSON.parse(event.data);
     if (payload.type === "progress") {
       addTraceItem(payload.agent, payload.summary);
+      if (payload.agent !== "Pipeline") {
+        completedAgents += 1;
+        traceProgress.textContent = `${completedAgents} / ${TOTAL_AGENTS}`;
+      }
       if (typeof payload.lat === "number" && typeof payload.lon === "number") {
         showSite(payload.lat, payload.lon);
       }
