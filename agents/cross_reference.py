@@ -148,6 +148,31 @@ def _summarize_vegetation_evidence(vegetation: dict | None) -> dict | None:
     }
 
 
+def _summarize_carbon_evidence(
+    projects: list[dict], radius_km: float
+) -> dict | None:
+    if not projects:
+        return None
+    return {
+        "source": "Verra/Gold Standard/Puro carbon registries (via Carbonmark)",
+        "nearby_registered_projects": [
+            {
+                "name": p["name"],
+                "registry": p["registry"],
+                "methodologies": p["methodologies"],
+                "total_credits_retired": p["total_credits_retired"],
+                "note": f"approximately {p['distance_km']}km from claim location",
+            }
+            for p in projects
+        ],
+        "note": (
+            f"Searched a {radius_km}km radius. Absence of a project here means "
+            "no registered carbon offset project was found nearby — it does not "
+            "confirm or deny any claim about emissions or deforestation on its own."
+        ),
+    }
+
+
 def build_evidence_bundle(
     original_claim: str,
     sub_claims: list[str],
@@ -160,6 +185,8 @@ def build_evidence_bundle(
     water_lookback_days: int,
     visual: VisualInspectionResult,
     vegetation: dict | None,
+    carbon_projects: list[dict],
+    carbon_radius_km: float,
 ) -> dict:
     evidence = {}
     land = _summarize_land_evidence(land_loss_by_year)
@@ -177,6 +204,9 @@ def build_evidence_bundle(
     vegetation_summary = _summarize_vegetation_evidence(vegetation)
     if vegetation_summary:
         evidence["vegetation_trend"] = vegetation_summary
+    carbon_summary = _summarize_carbon_evidence(carbon_projects, carbon_radius_km)
+    if carbon_summary:
+        evidence["carbon_registry"] = carbon_summary
 
     return {
         "claim": original_claim,

@@ -17,6 +17,7 @@ from google.genai import types as genai_types
 
 from orchestrator.a2a_messages import read_agent_message
 from orchestrator.agents import (
+    CarbonProjectStep,
     ClaimDecompositionStep,
     CrossReferenceStep,
     EcologyStep,
@@ -49,6 +50,7 @@ def build_pipeline() -> SequentialAgent:
                     WaterRiskStep(name="WaterRisk"),
                     VisualInspectionStep(name="VisualInspection"),
                     VegetationTrendStep(name="VegetationTrend"),
+                    CarbonProjectStep(name="CarbonProject"),
                 ],
             ),
             CrossReferenceStep(name="CrossReference"),
@@ -68,6 +70,7 @@ _MESSAGE_KEYS = [
     ("water_message", "Water Risk"),
     ("visual_message", "Visual Inspection"),
     ("vegetation_message", "Vegetation Trend"),
+    ("carbon_message", "Carbon Registry"),
     ("cross_reference_message", "Cross-Reference"),
     ("verdict_message", "Verdict Synthesis"),
 ]
@@ -148,6 +151,7 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
                         "water_message",
                         "visual_message",
                         "vegetation_message",
+                        "carbon_message",
                     ):
                         progress["radius_km"] = data.get("radius_km")
                     yield progress

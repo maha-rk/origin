@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 
 from agents.location_grounding import geocode as _geocode
 from agents.location_grounding import resolve_with_confidence
-from data_clients import earth_engine_client, gdacs_client, gfw_client
+from data_clients import carbon_registry_client, earth_engine_client, gdacs_client, gfw_client
 
 mcp = FastMCP("origin-evidence-tools")
 
@@ -97,6 +97,15 @@ def get_vegetation_trend(
         project, lat, lon, radius_km, recent_year, baseline_year
     )
     return result or {"available": False}
+
+
+@mcp.tool()
+def get_nearby_carbon_projects(lat: float, lon: float, radius_km: float = 25.0) -> list[dict]:
+    """Real, registered carbon offset/credit projects within radius_km of a
+    point, via Verra/Gold Standard/Puro registries (aggregated through
+    Carbonmark's public API). Opportunistic: an empty list is the normal,
+    honest result for most locations, not a failure."""
+    return carbon_registry_client.find_nearby_carbon_projects(lat, lon, radius_km)
 
 
 if __name__ == "__main__":

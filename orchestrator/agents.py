@@ -53,6 +53,7 @@ WATER_LOOKBACK_DAYS = 30
 VISUAL_RADIUS_KM = 5.0
 VEGETATION_RADIUS_KM = 5.0
 VEGETATION_BASELINE_YEARS = 5
+CARBON_RADIUS_KM = 25.0
 
 
 def _pipeline_failed(ctx: InvocationContext) -> bool:
@@ -379,6 +380,44 @@ class VegetationTrendStep(BaseAgent):
         )
 
 
+class CarbonProjectStep(BaseAgent):
+    """Runs alongside the other evidence-gathering agents — checks whether
+    a real, registered carbon offset/credit project (Verra/Gold
+    Standard/Puro) exists near the claim site. Opportunistic like Water
+    Risk's GDACS check: most claims won't have one nearby, and an empty
+    result is the normal, honest outcome, not a failure."""
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        state = ctx.session.state
+        if _pipeline_failed(ctx):
+            return
+
+        _, location = read_agent_message(state["location_message"])
+        projects = await mcp_client.call_tool(
+            "get_nearby_carbon_projects",
+            {
+                "lat": location["lat"],
+                "lon": location["lon"],
+                "radius_km": CARBON_RADIUS_KM,
+            },
+            state["gfw_api_key"],
+        )
+        payload = {"projects": projects, "radius_km": CARBON_RADIUS_KM}
+        summary = (
+            f"Found {len(projects)} registered carbon project(s) within "
+            f"{CARBON_RADIUS_KM}km."
+            if projects
+            else f"No registered carbon projects found within {CARBON_RADIUS_KM}km."
+        )
+        msg = make_agent_message(self.name, summary, payload, state["context_id"])
+        yield Event(
+            author=self.name,
+            actions=EventActions(state_delta={"carbon_message": msg}),
+        )
+
+
 class CrossReferenceStep(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -393,6 +432,7 @@ class CrossReferenceStep(BaseAgent):
         _, water_data = read_agent_message(state["water_message"])
         _, visual_data = read_agent_message(state["visual_message"])
         _, vegetation_data = read_agent_message(state["vegetation_message"])
+        _, carbon_data = read_agent_message(state["carbon_message"])
         _, decomposition_data = read_agent_message(state["decomposition_message"])
 
         # Explicit int() cast: A2A messages round-trip through a protobuf
@@ -428,6 +468,8 @@ class CrossReferenceStep(BaseAgent):
             water_data.get("days", WATER_LOOKBACK_DAYS),
             visual,
             vegetation_data,
+            carbon_data.get("projects", []),
+            carbon_data.get("radius_km", CARBON_RADIUS_KM),
         )
         cross_ref = await asyncio.to_thread(
             cross_reference_claim, make_client(state["gemini_api_key"]), bundle
