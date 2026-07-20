@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from google import genai
 
 from agents.gemini_config import MODEL, generate_json, make_client
+from data_clients.geo_utils import haversine_km
 from data_clients.http_retry import request_with_retry
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
@@ -152,24 +153,11 @@ def geocode(query_text: str) -> list[GeocodeCandidate]:
     return candidates
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    from math import asin, cos, radians, sin, sqrt
-
-    r = 6371.0
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = (
-        sin(dlat / 2) ** 2
-        + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-    )
-    return 2 * r * asin(sqrt(a))
-
-
 def _all_within_radius(candidates: list[GeocodeCandidate], radius_km: float) -> bool:
     for i in range(len(candidates)):
         for j in range(i + 1, len(candidates)):
             a, b = candidates[i], candidates[j]
-            if _haversine_km(a.lat, a.lon, b.lat, b.lon) > radius_km:
+            if haversine_km(a.lat, a.lon, b.lat, b.lon) > radius_km:
                 return False
     return True
 
@@ -206,9 +194,30 @@ def resolve_with_confidence(
     return candidate if granularity_ok else None
 
 
-def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
+def extract_and_normalize_query(client: genai.Client, claim_text: str) -> str | None:
+    """Gemini extraction + relational-prefix stripping, shared by both the
+    direct (sync, Nominatim-in-process) and MCP-routed geocoding paths so
+    this logic exists in exactly one place. Returns None if no location
+    signal was found in the claim."""
     signal = extract_location_signal(client, claim_text)
     if not signal.found:
+        return None
+    return RELATIONAL_PREFIX_RE.sub("", signal.query_text).strip()
+
+
+def try_coordinate_shortcut(query_text: str) -> tuple[float, float] | None:
+    """If query_text is already a bare 'lat,lon' pair, skip geocoding
+    entirely. Shared by both geocoding paths for the same reason as
+    extract_and_normalize_query above."""
+    coord_match = COORDINATE_RE.match(query_text)
+    if not coord_match:
+        return None
+    return float(coord_match.group(1)), float(coord_match.group(2))
+
+
+def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
+    query_text = extract_and_normalize_query(client, claim_text)
+    if query_text is None:
         return GroundingResult(
             resolved=False,
             reason=(
@@ -218,34 +227,32 @@ def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
             claim_text=claim_text,
         )
 
-    signal.query_text = RELATIONAL_PREFIX_RE.sub("", signal.query_text).strip()
-
-    coord_match = COORDINATE_RE.match(signal.query_text)
-    if coord_match:
-        lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
+    coords = try_coordinate_shortcut(query_text)
+    if coords is not None:
+        lat, lon = coords
         return GroundingResult(
             resolved=True,
             reason="Claim gave explicit coordinates; geocoding skipped.",
             claim_text=claim_text,
-            location_query=signal.query_text,
+            location_query=query_text,
             lat=lat,
             lon=lon,
-            display_name=signal.query_text,
+            display_name=query_text,
             candidates_considered=0,
         )
 
-    candidates = geocode(signal.query_text)
+    candidates = geocode(query_text)
     match = resolve_with_confidence(candidates)
 
     if match is None:
         if not candidates:
             reason = (
-                f"Could not geocode {signal.query_text!r} — no matches found. "
+                f"Could not geocode {query_text!r} — no matches found. "
                 "Please provide a more specific location."
             )
         else:
             reason = (
-                f"{signal.query_text!r} resolved to {len(candidates)} ambiguous "
+                f"{query_text!r} resolved to {len(candidates)} ambiguous "
                 "or low-confidence candidates. Please provide a more specific "
                 "location."
             )
@@ -253,7 +260,7 @@ def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
             resolved=False,
             reason=reason,
             claim_text=claim_text,
-            location_query=signal.query_text,
+            location_query=query_text,
             candidates_considered=len(candidates),
         )
 
@@ -261,7 +268,7 @@ def ground_claim(client: genai.Client, claim_text: str) -> GroundingResult:
         resolved=True,
         reason="Resolved with reasonable confidence.",
         claim_text=claim_text,
-        location_query=signal.query_text,
+        location_query=query_text,
         lat=match.lat,
         lon=match.lon,
         display_name=match.display_name,

@@ -20,10 +20,15 @@ const contradictingList = document.getElementById("contradicting-list");
 const supportingList = document.getElementById("supporting-list");
 const gapsSection = document.getElementById("gaps-section");
 const gapsList = document.getElementById("gaps-list");
+const subClaimsSection = document.getElementById("sub-claims-section");
+const subClaimsList = document.getElementById("sub-claims-list");
 const sources = document.getElementById("sources");
 
 const locationPanel = document.getElementById("location-panel");
 const locationCaption = document.getElementById("location-caption");
+
+const historySection = document.getElementById("history");
+const historyList = document.getElementById("history-list");
 
 const RADIUS_COLORS = {
   "Land Analysis": "#a9762c",
@@ -98,6 +103,79 @@ function directionLabel(score) {
   return "mixed / inconclusive";
 }
 
+function directionStatusClass(score) {
+  if (score == null) return "mixed";
+  if (score < 0.35) return "contradicts";
+  if (score > 0.65) return "supports";
+  return "mixed";
+}
+
+function historyStatusClass(row) {
+  if (!row.resolved) return "unresolved";
+  return directionStatusClass(row.direction_score);
+}
+
+function historyStatusText(row) {
+  if (!row.resolved) return "unresolved";
+  const cls = historyStatusClass(row);
+  return cls === "mixed" ? "mixed" : cls;
+}
+
+function formatRelativeTime(isoString) {
+  // claims_log.py writes Python's datetime.isoformat() on a UTC-aware
+  // datetime, which already includes a numeric "+00:00" offset — parseable
+  // by Date() as-is. (An earlier version of this tried to also append "Z",
+  // producing an invalid double-suffixed string and "NaNd ago" everywhere.)
+  const then = new Date(isoString);
+  const diffSeconds = Math.round((Date.now() - then.getTime()) / 1000);
+  if (diffSeconds < 60) return "just now";
+  const diffMinutes = Math.round(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${Math.round(diffHours / 24)}d ago`;
+}
+
+async function loadHistory() {
+  try {
+    const resp = await fetch("/api/history?limit=10");
+    const data = await resp.json();
+    const rows = data.investigations || [];
+
+    historyList.innerHTML = "";
+    if (rows.length === 0) {
+      historySection.hidden = true;
+      return;
+    }
+    historySection.hidden = false;
+
+    for (const row of rows) {
+      const li = document.createElement("li");
+      li.className = "history-item";
+
+      const claimEl = document.createElement("span");
+      claimEl.className = "history-claim";
+      claimEl.textContent = row.claim_text;
+      claimEl.title = row.claim_text;
+
+      const statusEl = document.createElement("span");
+      statusEl.className = `history-status ${historyStatusClass(row)}`;
+      statusEl.textContent = historyStatusText(row);
+
+      const timeEl = document.createElement("span");
+      timeEl.className = "history-time";
+      timeEl.textContent = formatRelativeTime(row.logged_at);
+
+      li.appendChild(claimEl);
+      li.appendChild(statusEl);
+      li.appendChild(timeEl);
+      historyList.appendChild(li);
+    }
+  } catch (e) {
+    historySection.hidden = true;
+  }
+}
+
 function fillList(el, items, emptyText) {
   el.innerHTML = "";
   if (!items || items.length === 0) {
@@ -166,6 +244,40 @@ function renderVerdict(verdict) {
     gapsSection.hidden = true;
   }
 
+  if (verdict.sub_claims && verdict.sub_claims.length > 0) {
+    subClaimsSection.hidden = false;
+    subClaimsList.innerHTML = "";
+    for (const sc of verdict.sub_claims) {
+      const li = document.createElement("li");
+      li.className = "sub-claim-item";
+
+      const header = document.createElement("div");
+      header.className = "sub-claim-header";
+
+      const textEl = document.createElement("span");
+      textEl.className = "sub-claim-text";
+      textEl.textContent = sc.claim;
+
+      const badge = document.createElement("span");
+      const cls = directionStatusClass(sc.confidence?.direction_score);
+      badge.className = `history-status ${cls}`;
+      badge.textContent = cls;
+
+      header.appendChild(textEl);
+      header.appendChild(badge);
+
+      const summaryEl = document.createElement("p");
+      summaryEl.className = "sub-claim-summary";
+      summaryEl.textContent = sc.summary;
+
+      li.appendChild(header);
+      li.appendChild(summaryEl);
+      subClaimsList.appendChild(li);
+    }
+  } else {
+    subClaimsSection.hidden = true;
+  }
+
   sources.textContent = verdict.sources && verdict.sources.length
     ? `Sources: ${verdict.sources.join(" · ")}`
     : "";
@@ -207,6 +319,7 @@ form.addEventListener("submit", (e) => {
       source.close();
       submitBtn.disabled = false;
       submitBtn.textContent = "Investigate";
+      loadHistory();
     }
   };
 
@@ -227,3 +340,5 @@ if (presetClaim) {
   input.value = presetClaim;
   form.requestSubmit();
 }
+
+loadHistory();

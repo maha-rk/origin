@@ -7,15 +7,16 @@ without reinventing working, verified logic inside a new framework. Every
 handoff between steps goes through orchestrator/a2a_messages.py, not a bare
 session-state value.
 
-Land Analysis, Ecology, and Water Risk call their data sources through the
-real MCP server in mcp_servers/origin_tools.py (see orchestrator/mcp_client.py)
-rather than importing data_clients/ directly — genuine MCP protocol traffic,
-not a decorative server nothing talks to. Location Grounding's geocoding
-call is deliberately left as a direct call: its confidence heuristics
-(relational-prefix stripping, coordinate shortcut, duplicate clustering) are
-delicate and already well-tested, and geocode_location is exposed on the
-same MCP server for external use even though this pipeline doesn't route
-through it internally.
+Land Analysis, Ecology, Water Risk, and now Location Grounding's geocoding
+step all call their data sources through the real MCP server in
+mcp_servers/origin_tools.py (see orchestrator/mcp_client.py) rather than
+importing data_clients/ directly — genuine MCP protocol traffic, not a
+decorative server nothing talks to. Location Grounding's Gemini extraction
+and the relational-prefix/coordinate-shortcut normalization stay direct
+(shared with agents/location_grounding.ground_claim via
+extract_and_normalize_query/try_coordinate_shortcut, so this logic exists in
+exactly one tested place) — only the actual geocode+confidence decision
+routes through MCP's geocode_location tool.
 """
 
 from __future__ import annotations
@@ -28,13 +29,15 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 
 from agents.gemini_config import make_client
+from agents.claim_decomposition import decompose_claim
 from agents.cross_reference import (
     CrossReferenceFinding,
     CrossReferenceResult,
+    Gap,
     build_evidence_bundle,
     cross_reference_claim,
 )
-from agents.location_grounding import ground_claim
+from agents.location_grounding import extract_and_normalize_query, try_coordinate_shortcut
 from agents.verdict_synthesis import synthesize_verdict
 from data_clients.gdacs_client import DisasterEvent, WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
@@ -51,20 +54,92 @@ def _pipeline_failed(ctx: InvocationContext) -> bool:
     return bool(ctx.session.state.get("pipeline_failed"))
 
 
+async def _ground_claim_via_mcp(claim_text: str, gemini_api_key: str, gfw_api_key: str) -> dict:
+    """Same contract as agents.location_grounding.GroundingResult.__dict__,
+    but the geocode+confidence decision is made by MCP's geocode_location
+    tool instead of an in-process call."""
+    client = make_client(gemini_api_key)
+    query_text = await asyncio.to_thread(extract_and_normalize_query, client, claim_text)
+
+    if query_text is None:
+        return {
+            "resolved": False,
+            "reason": (
+                "No location signal found in claim text. Please provide a "
+                "specific location (coordinates, address, or place name)."
+            ),
+            "claim_text": claim_text,
+            "location_query": None,
+            "lat": None,
+            "lon": None,
+            "display_name": None,
+            "candidates_considered": 0,
+        }
+
+    coords = try_coordinate_shortcut(query_text)
+    if coords is not None:
+        lat, lon = coords
+        return {
+            "resolved": True,
+            "reason": "Claim gave explicit coordinates; geocoding skipped.",
+            "claim_text": claim_text,
+            "location_query": query_text,
+            "lat": lat,
+            "lon": lon,
+            "display_name": query_text,
+            "candidates_considered": 0,
+        }
+
+    geocode_result = await mcp_client.call_tool(
+        "geocode_location", {"query": query_text}, gfw_api_key
+    )
+    considered = geocode_result.get("candidates_considered", 0)
+
+    if not geocode_result.get("resolved"):
+        reason = (
+            f"{query_text!r} resolved to {considered} ambiguous or low-confidence "
+            "candidates. Please provide a more specific location."
+            if considered
+            else f"Could not geocode {query_text!r} — no matches found. Please "
+            "provide a more specific location."
+        )
+        return {
+            "resolved": False,
+            "reason": reason,
+            "claim_text": claim_text,
+            "location_query": query_text,
+            "lat": None,
+            "lon": None,
+            "display_name": None,
+            "candidates_considered": considered,
+        }
+
+    return {
+        "resolved": True,
+        "reason": "Resolved with reasonable confidence.",
+        "claim_text": claim_text,
+        "location_query": query_text,
+        "lat": geocode_result["lat"],
+        "lon": geocode_result["lon"],
+        "display_name": geocode_result["display_name"],
+        "candidates_considered": considered,
+    }
+
+
 class LocationGroundingStep(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
         state = ctx.session.state
-        result = await asyncio.to_thread(
-            ground_claim, make_client(state["gemini_api_key"]), state["claim_text"]
+        result = await _ground_claim_via_mcp(
+            state["claim_text"], state["gemini_api_key"], state["gfw_api_key"]
         )
 
-        if not result.resolved:
+        if not result["resolved"]:
             msg = make_agent_message(
                 self.name,
-                f"Could not resolve a location: {result.reason}",
-                result.__dict__,
+                f"Could not resolve a location: {result['reason']}",
+                result,
                 state["context_id"],
             )
             yield Event(
@@ -73,7 +148,7 @@ class LocationGroundingStep(BaseAgent):
                     state_delta={
                         "location_message": msg,
                         "pipeline_failed": True,
-                        "failure_reason": result.reason,
+                        "failure_reason": result["reason"],
                     }
                 ),
             )
@@ -81,13 +156,39 @@ class LocationGroundingStep(BaseAgent):
 
         msg = make_agent_message(
             self.name,
-            f"Resolved to {result.display_name} ({result.lat}, {result.lon}).",
-            result.__dict__,
+            f"Resolved to {result['display_name']} ({result['lat']}, {result['lon']}).",
+            result,
             state["context_id"],
         )
         yield Event(
             author=self.name,
             actions=EventActions(state_delta={"location_message": msg}),
+        )
+
+
+class ClaimDecompositionStep(BaseAgent):
+    """Splits a compound claim into atomic sub-claims. Runs in parallel with
+    LocationGroundingStep — it only needs the raw claim text, not a resolved
+    location, so there's no reason to wait."""
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        state = ctx.session.state
+        result = await asyncio.to_thread(
+            decompose_claim, make_client(state["gemini_api_key"]), state["claim_text"]
+        )
+
+        payload = {"sub_claims": result.sub_claims}
+        summary = (
+            "Single claim, no decomposition needed."
+            if len(result.sub_claims) == 1
+            else f"Split into {len(result.sub_claims)} sub-claims."
+        )
+        msg = make_agent_message(self.name, summary, payload, state["context_id"])
+        yield Event(
+            author=self.name,
+            actions=EventActions(state_delta={"decomposition_message": msg}),
         )
 
 
@@ -203,6 +304,7 @@ class CrossReferenceStep(BaseAgent):
         _, land_data = read_agent_message(state["land_message"])
         _, ecology_data = read_agent_message(state["ecology_message"])
         _, water_data = read_agent_message(state["water_message"])
+        _, decomposition_data = read_agent_message(state["decomposition_message"])
 
         # Explicit int() cast: A2A messages round-trip through a protobuf
         # Value, whose JSON mapping has no integer type — every number comes
@@ -218,9 +320,11 @@ class CrossReferenceStep(BaseAgent):
             has_coverage=water_data.get("has_coverage", False),
             events=[DisasterEvent(**e) for e in water_data.get("events", [])],
         )
+        sub_claims = decomposition_data.get("sub_claims") or [state["claim_text"]]
 
         bundle = build_evidence_bundle(
             state["claim_text"],
+            sub_claims,
             location["display_name"],
             loss_years,
             areas,
@@ -235,7 +339,7 @@ class CrossReferenceStep(BaseAgent):
 
         payload = {
             "findings": [vars(f) for f in cross_ref.findings],
-            "gaps": cross_ref.gaps,
+            "gaps": [vars(g) for g in cross_ref.gaps],
         }
         summary = (
             f"{len(cross_ref.findings)} finding(s), "
@@ -269,18 +373,20 @@ class VerdictSynthesisStep(BaseAgent):
 
         _, location = read_agent_message(state["location_message"])
         _, cross_ref_data = read_agent_message(state["cross_reference_message"])
+        _, decomposition_data = read_agent_message(state["decomposition_message"])
 
         findings = [
             CrossReferenceFinding(**f) for f in cross_ref_data.get("findings", [])
         ]
-        cross_ref = CrossReferenceResult(
-            findings=findings, gaps=cross_ref_data.get("gaps", [])
-        )
+        gaps = [Gap(**g) for g in cross_ref_data.get("gaps", [])]
+        cross_ref = CrossReferenceResult(findings=findings, gaps=gaps)
+        sub_claims = decomposition_data.get("sub_claims") or [state["claim_text"]]
 
         verdict = await asyncio.to_thread(
             synthesize_verdict,
             make_client(state["gemini_api_key"]),
             state["claim_text"],
+            sub_claims,
             location["display_name"],
             cross_ref,
         )
@@ -295,6 +401,17 @@ class VerdictSynthesisStep(BaseAgent):
             "gaps": verdict.gaps,
             "summary": verdict.summary,
             "sources": verdict.sources,
+            "sub_claims": [
+                {
+                    "claim": sc.claim,
+                    "confidence": vars(sc.confidence),
+                    "supporting_evidence": sc.supporting_evidence,
+                    "contradicting_evidence": sc.contradicting_evidence,
+                    "gaps": sc.gaps,
+                    "summary": sc.summary,
+                }
+                for sc in verdict.sub_claims
+            ],
         }
         trace_summary = (
             f"Verdict ready — {len(verdict.supporting_evidence)} supporting, "

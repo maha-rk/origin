@@ -14,6 +14,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from orchestrator.claims_log import recent_investigations
 from orchestrator.pipeline import stream_investigation
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -52,6 +53,14 @@ async def investigate(claim: str = Query(..., min_length=1)):
             yield _sse(event)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/api/history")
+async def history(limit: int = Query(20, ge=1, le=100)):
+    import asyncio
+
+    rows = await asyncio.to_thread(recent_investigations, limit)
+    return {"investigations": rows}
 
 
 def _sse(event: dict) -> str:

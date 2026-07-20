@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from data_clients.geo_utils import buffer_polygon_geojson
+from data_clients.geo_utils import buffer_polygon_geojson, haversine_km
 from data_clients.http_retry import request_with_retry
 
 BASE_URL = "https://data-api.globalforestwatch.org"
@@ -96,13 +96,30 @@ class ProtectedArea:
     iucn_category: str
     status: str
     area_ha: float
+    # Distance from the query point to the protected area's bounding-box
+    # center — an approximation, not nearest-edge distance (a large or
+    # irregularly-shaped park's true nearest edge could be meaningfully
+    # closer). None if gfw_bbox was missing from the API response. Still a
+    # real improvement over "somewhere within the search radius."
+    distance_km: float | None = None
+
+
+def _bbox_center_distance_km(
+    lat: float, lon: float, gfw_bbox: list | None
+) -> float | None:
+    if not gfw_bbox or len(gfw_bbox) != 4:
+        return None
+    min_lon, min_lat, max_lon, max_lat = (float(x) for x in gfw_bbox)
+    center_lat = (min_lat + max_lat) / 2
+    center_lon = (min_lon + max_lon) / 2
+    return round(haversine_km(lat, lon, center_lat, center_lon), 2)
 
 
 def get_nearby_protected_areas(
     api_key: str, lat: float, lon: float, radius_km: float = 10.0
 ) -> list[ProtectedArea]:
     geometry = point_to_buffer_polygon(lat, lon, radius_km)
-    sql = "SELECT name, name_eng, desig, iucn_cat, status, gis_area FROM data"
+    sql = "SELECT name, name_eng, desig, iucn_cat, status, gis_area, gfw_bbox FROM data"
     rows = query_dataset(api_key, WDPA_DATASET, WDPA_VERSION, sql, geometry)
     return [
         ProtectedArea(
@@ -111,6 +128,7 @@ def get_nearby_protected_areas(
             iucn_category=r.get("iucn_cat") or "",
             status=r.get("status") or "",
             area_ha=float(r.get("gis_area") or 0),
+            distance_km=_bbox_center_distance_km(lat, lon, r.get("gfw_bbox")),
         )
         for r in rows
     ]

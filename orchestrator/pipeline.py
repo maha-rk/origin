@@ -1,9 +1,10 @@
 """Top-level ORIGIN pipeline: composes all agent steps via ADK's
 SequentialAgent/ParallelAgent and executes them through an ADK Runner.
 
-Land Analysis, Ecology, and Water Risk genuinely run concurrently once
-Location Grounding resolves a location (ParallelAgent) — not sequential
-function calls dressed up as agents.
+Two genuine concurrency points, not sequential function calls dressed up as
+agents: Claim Decomposition runs alongside Location Grounding (neither
+depends on the other's output), and once a location resolves, Land
+Analysis/Ecology/Water Risk fan out together.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from google.genai import types as genai_types
 
 from orchestrator.a2a_messages import read_agent_message
 from orchestrator.agents import (
+    ClaimDecompositionStep,
     CrossReferenceStep,
     EcologyStep,
     LandAnalysisStep,
@@ -30,7 +32,13 @@ def build_pipeline() -> SequentialAgent:
     return SequentialAgent(
         name="OriginPipeline",
         sub_agents=[
-            LocationGroundingStep(name="LocationGrounding"),
+            ParallelAgent(
+                name="ClaimIntake",
+                sub_agents=[
+                    LocationGroundingStep(name="LocationGrounding"),
+                    ClaimDecompositionStep(name="ClaimDecomposition"),
+                ],
+            ),
             ParallelAgent(
                 name="EvidenceGathering",
                 sub_agents=[
@@ -50,12 +58,27 @@ def build_pipeline() -> SequentialAgent:
 # into human-readable progress instead of discarding it.
 _MESSAGE_KEYS = [
     ("location_message", "Location Grounding"),
+    ("decomposition_message", "Claim Decomposition"),
     ("land_message", "Land Analysis"),
     ("ecology_message", "Ecology"),
     ("water_message", "Water Risk"),
     ("cross_reference_message", "Cross-Reference"),
     ("verdict_message", "Verdict Synthesis"),
 ]
+
+
+def _unwrap_task_group_error(e: Exception) -> Exception:
+    """Two pipeline stages now run agents concurrently (Location Grounding +
+    Claim Decomposition, then the evidence-gathering trio) — when a shared
+    root cause (e.g. a bad API key) fails multiple concurrent agents at
+    once, asyncio.TaskGroup wraps them in an ExceptionGroup whose default
+    string form is an unhelpful "unhandled errors in a TaskGroup (N
+    sub-exception)". Surface the first real underlying exception instead.
+    """
+    exceptions = getattr(e, "exceptions", None)
+    if exceptions:
+        return _unwrap_task_group_error(exceptions[0])
+    return e
 
 
 async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key: str):
@@ -129,7 +152,7 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
         # as "lost connection." A live demo hitting an unlucky transient
         # failure should degrade to an honest "investigation failed"
         # message, not a silent hang.
-        pipeline_error = e
+        pipeline_error = _unwrap_task_group_error(e)
 
     if pipeline_error is not None:
         yield {

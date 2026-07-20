@@ -29,12 +29,19 @@ class CrossReferenceFinding:
     relation: str
     explanation: str
     citation: str
+    sub_claim: str
+
+
+@dataclass
+class Gap:
+    sub_claim: str
+    gap: str
 
 
 @dataclass
 class CrossReferenceResult:
     findings: list[CrossReferenceFinding]
-    gaps: list[str] = field(default_factory=list)
+    gaps: list[Gap] = field(default_factory=list)
 
 
 def _summarize_land_evidence(loss_by_year: list[TreeCoverLossYear]) -> dict | None:
@@ -67,7 +74,13 @@ def _summarize_ecology_evidence(
                 "iucn_category": a.iucn_category,
                 "status": a.status,
                 "area_ha": round(a.area_ha, 2),
-                "note": f"within {radius_km}km of claim location (exact distance not computed)",
+                "note": (
+                    f"approximately {a.distance_km}km from claim location "
+                    "(distance to the protected area's bounding-box center, "
+                    "not its nearest edge)"
+                    if a.distance_km is not None
+                    else f"within {radius_km}km of claim location (exact distance not computed)"
+                ),
             }
             for a in areas
         ],
@@ -102,7 +115,8 @@ def _summarize_water_evidence(
 
 
 def build_evidence_bundle(
-    claim_text: str,
+    original_claim: str,
+    sub_claims: list[str],
     location_display_name: str,
     land_loss_by_year: list[TreeCoverLossYear],
     ecology_areas: list[ProtectedArea],
@@ -123,40 +137,62 @@ def build_evidence_bundle(
         evidence["water_risk"] = water
 
     return {
-        "claim": claim_text,
+        "claim": original_claim,
+        "sub_claims": sub_claims,
         "location": location_display_name,
         "evidence": evidence,
     }
 
 
 def cross_reference_claim(client: genai.Client, evidence_bundle: dict) -> CrossReferenceResult:
+    sub_claims = evidence_bundle.get("sub_claims") or [evidence_bundle.get("claim", "")]
     prompt = f"""You are the Evidence Cross-Reference stage of ORIGIN, a claim
-investigation system. You are given a claim and evidence gathered by upstream
-agents about the claim's location. Your job is ONLY to identify the
-relationship between the claim and each piece of evidence — you never decide
-whether the claim is true or false overall (that's a downstream step).
+investigation system. You are given a claim broken into one or more atomic
+sub-claims, plus evidence gathered by upstream agents about the claim's
+location. Your job is ONLY to identify the relationship between EACH
+sub-claim and each piece of evidence — you never decide whether any claim
+is true or false overall (that's a downstream step).
 
-For each piece of evidence, judge its relation to the specific wording of the
-claim:
-- "supports": the evidence is consistent with what the claim asserts
-- "contradicts": the evidence conflicts with what the claim asserts
-- "context": relevant background, but doesn't directly confirm or deny the claim
-- "insufficient_data": the claim asserts something this evidence category
-  cannot actually measure (e.g. the claim is about emissions reductions, but
-  land-use data can only speak to tree cover, not emissions directly)
+There are {len(sub_claims)} sub-claim(s) to judge evidence against:
+{json.dumps(sub_claims, indent=2)}
+
+For each piece of evidence, and for EACH sub-claim it's relevant to, judge
+the relation:
+- "supports": the evidence is consistent with what that sub-claim asserts
+- "contradicts": the evidence conflicts with what that sub-claim asserts
+- "context": relevant background, but doesn't directly confirm or deny that sub-claim
+- "insufficient_data": that sub-claim asserts something this evidence
+  category cannot actually measure (e.g. the sub-claim is about emissions
+  reductions, but land-use data can only speak to tree cover, not emissions
+  directly)
+
+A single piece of evidence may be relevant to multiple sub-claims (produce
+one finding per sub-claim it actually bears on) or to none of them (skip it
+entirely rather than forcing an irrelevant finding).
 
 Watch for negated claims ("no protected areas nearby", "no environmental
 risk", "minimal impact"). The relation must reflect whether the evidence
-confirms or refutes the CLAIM AS STATED, not just whether the evidence
-category itself sounds negative or positive. For example: if the claim says
-"no environmental risk nearby" and the evidence is a flood event found near
-the location, that evidence CONTRADICTS the claim — finding a risk when the
-claim asserts none is a contradiction, not support. Before assigning
-"supports", double check: does this evidence actually make the claim's exact
-wording more likely to be true, after accounting for any negation in it?
+confirms or refutes the SUB-CLAIM AS STATED, not just whether the evidence
+category itself sounds negative or positive. For example: if a sub-claim
+says "no environmental risk nearby" and the evidence is a flood event found
+near the location, that evidence CONTRADICTS the sub-claim — finding a risk
+when the sub-claim asserts none is a contradiction, not support. Before
+assigning "supports", double check: does this evidence actually make that
+sub-claim's exact wording more likely to be true, after accounting for any
+negation in it?
 
-Also list "gaps": specific things the claim asserts that NONE of the gathered
-evidence can verify or refute.
+Also list "gaps": specific things any sub-claim asserts that NONE of the
+gathered evidence can verify or refute. Each gap must be tagged with which
+sub-claim it belongs to (exactly matching one of the sub-claims above).
+
+Do NOT state a "search_radius_km" number in your explanation text — models
+have repeatedly misattributed one evidence category's radius to another
+(e.g. describing an ecology finding using land_analysis's radius) even when
+told to be careful, so the number is left out of your task entirely. Where
+a specific protected area already has a "note" field with its computed
+distance (e.g. "approximately 8.17km from claim location"), use THAT
+distance instead — it's more precise than a search radius anyway, and it's
+already correct in the data you don't need to transcribe it.
 
 If the evidence dict is empty, return no findings and a gap noting that no
 evidence was available for this claim/location.
@@ -164,9 +200,11 @@ evidence was available for this claim/location.
 Respond with strict JSON only, no markdown fences, in this exact shape:
 {{
   "findings": [
-    {{"evidence_source": "...", "relation": "supports|contradicts|context|insufficient_data", "explanation": "...", "citation": "..."}}
+    {{"sub_claim": "<must exactly match one of the sub-claims above>", "evidence_source": "...", "relation": "supports|contradicts|context|insufficient_data", "explanation": "...", "citation": "..."}}
   ],
-  "gaps": ["..."]
+  "gaps": [
+    {{"sub_claim": "<must exactly match one of the sub-claims above>", "gap": "..."}}
+  ]
 }}
 
 For "evidence_source", always use the exact string in that evidence
@@ -181,14 +219,22 @@ Claim and evidence:
     data = generate_json(client, MODEL, prompt)
     # Defensive .get() rather than direct indexing: a single malformed
     # finding item (missing a key) shouldn't crash the whole investigation
-    # when the other findings are perfectly usable.
+    # when the other findings are perfectly usable. sub_claim falls back to
+    # the first sub-claim rather than an empty string so grouping downstream
+    # never silently drops a finding into an unmatched bucket.
     findings = [
         CrossReferenceFinding(
             evidence_source=f.get("evidence_source", "unknown source"),
             relation=f.get("relation") if f.get("relation") in RELATIONS else "context",
             explanation=f.get("explanation", ""),
             citation=f.get("citation", ""),
+            sub_claim=f.get("sub_claim") or sub_claims[0],
         )
         for f in data.get("findings", [])
     ]
-    return CrossReferenceResult(findings=findings, gaps=data.get("gaps", []))
+    gaps = [
+        Gap(sub_claim=g.get("sub_claim") or sub_claims[0], gap=g.get("gap", ""))
+        for g in data.get("gaps", [])
+        if isinstance(g, dict)
+    ]
+    return CrossReferenceResult(findings=findings, gaps=gaps)
