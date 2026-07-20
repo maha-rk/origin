@@ -39,6 +39,7 @@ from agents.cross_reference import (
 )
 from agents.location_grounding import extract_and_normalize_query, try_coordinate_shortcut
 from agents.verdict_synthesis import synthesize_verdict
+from agents.visual_inspection import VisualInspectionResult, inspect_site
 from data_clients.gdacs_client import DisasterEvent, WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
 from orchestrator import mcp_client
@@ -48,6 +49,7 @@ LAND_RADIUS_KM = 5.0
 ECOLOGY_RADIUS_KM = 10.0
 WATER_RADIUS_KM = 50.0
 WATER_LOOKBACK_DAYS = 30
+VISUAL_RADIUS_KM = 5.0
 
 
 def _pipeline_failed(ctx: InvocationContext) -> bool:
@@ -292,6 +294,42 @@ class WaterRiskStep(BaseAgent):
         )
 
 
+class VisualInspectionStep(BaseAgent):
+    """Runs alongside Land/Ecology/Water Risk once location resolves — a
+    genuinely independent evidence source, since it's Gemini's own reading
+    of a real satellite image rather than another structured-data lookup."""
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        state = ctx.session.state
+        if _pipeline_failed(ctx):
+            return
+
+        _, location = read_agent_message(state["location_message"])
+        result = await asyncio.to_thread(
+            inspect_site,
+            make_client(state["gemini_api_key"]),
+            location["lat"],
+            location["lon"],
+            VISUAL_RADIUS_KM,
+        )
+        payload = {
+            "available": result.available,
+            "observations": result.observations,
+            "radius_km": result.radius_km,
+        }
+        summary = (
+            result.observations
+            if result.available
+            else "Satellite imagery unavailable for this location — skipped."
+        )
+        msg = make_agent_message(self.name, summary, payload, state["context_id"])
+        yield Event(
+            author=self.name, actions=EventActions(state_delta={"visual_message": msg})
+        )
+
+
 class CrossReferenceStep(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -304,6 +342,7 @@ class CrossReferenceStep(BaseAgent):
         _, land_data = read_agent_message(state["land_message"])
         _, ecology_data = read_agent_message(state["ecology_message"])
         _, water_data = read_agent_message(state["water_message"])
+        _, visual_data = read_agent_message(state["visual_message"])
         _, decomposition_data = read_agent_message(state["decomposition_message"])
 
         # Explicit int() cast: A2A messages round-trip through a protobuf
@@ -320,6 +359,11 @@ class CrossReferenceStep(BaseAgent):
             has_coverage=water_data.get("has_coverage", False),
             events=[DisasterEvent(**e) for e in water_data.get("events", [])],
         )
+        visual = VisualInspectionResult(
+            available=visual_data.get("available", False),
+            observations=visual_data.get("observations", ""),
+            radius_km=visual_data.get("radius_km", VISUAL_RADIUS_KM),
+        )
         sub_claims = decomposition_data.get("sub_claims") or [state["claim_text"]]
 
         bundle = build_evidence_bundle(
@@ -332,6 +376,7 @@ class CrossReferenceStep(BaseAgent):
             water_query,
             water_data.get("radius_km", WATER_RADIUS_KM),
             water_data.get("days", WATER_LOOKBACK_DAYS),
+            visual,
         )
         cross_ref = await asyncio.to_thread(
             cross_reference_claim, make_client(state["gemini_api_key"]), bundle

@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from google import genai
 
 from agents.gemini_config import MODEL, generate_json
+from agents.visual_inspection import VisualInspectionResult
 from data_clients.gdacs_client import WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
 
@@ -114,6 +115,21 @@ def _summarize_water_evidence(
     }
 
 
+def _summarize_visual_evidence(visual: VisualInspectionResult) -> dict | None:
+    # No radius number included here on purpose — a distinct evidence
+    # category restating a search-radius figure is exactly the pattern that
+    # caused Gemini to misattribute one category's radius to another's
+    # explanation text in earlier testing (see the "do NOT state a
+    # search_radius_km number" instruction below); the observation content
+    # itself doesn't need it to be useful.
+    if not visual.available or not visual.observations:
+        return None
+    return {
+        "source": "Gemini vision — satellite image analysis (generated independently, without seeing the claim text)",
+        "observations": visual.observations,
+    }
+
+
 def build_evidence_bundle(
     original_claim: str,
     sub_claims: list[str],
@@ -124,6 +140,7 @@ def build_evidence_bundle(
     water_query: WaterRiskQuery,
     water_radius_km: float,
     water_lookback_days: int,
+    visual: VisualInspectionResult,
 ) -> dict:
     evidence = {}
     land = _summarize_land_evidence(land_loss_by_year)
@@ -135,6 +152,9 @@ def build_evidence_bundle(
     water = _summarize_water_evidence(water_query, water_radius_km, water_lookback_days)
     if water:
         evidence["water_risk"] = water
+    visual_summary = _summarize_visual_evidence(visual)
+    if visual_summary:
+        evidence["visual_inspection"] = visual_summary
 
     return {
         "claim": original_claim,

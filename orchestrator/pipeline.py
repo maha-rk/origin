@@ -23,6 +23,7 @@ from orchestrator.agents import (
     LandAnalysisStep,
     LocationGroundingStep,
     VerdictSynthesisStep,
+    VisualInspectionStep,
     WaterRiskStep,
 )
 from orchestrator.claims_log import log_investigation
@@ -45,6 +46,7 @@ def build_pipeline() -> SequentialAgent:
                     LandAnalysisStep(name="LandAnalysis"),
                     EcologyStep(name="Ecology"),
                     WaterRiskStep(name="WaterRisk"),
+                    VisualInspectionStep(name="VisualInspection"),
                 ],
             ),
             CrossReferenceStep(name="CrossReference"),
@@ -62,6 +64,7 @@ _MESSAGE_KEYS = [
     ("land_message", "Land Analysis"),
     ("ecology_message", "Ecology"),
     ("water_message", "Water Risk"),
+    ("visual_message", "Visual Inspection"),
     ("cross_reference_message", "Cross-Reference"),
     ("verdict_message", "Verdict Synthesis"),
 ]
@@ -136,7 +139,12 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
                     if key == "location_message" and data.get("resolved"):
                         progress["lat"] = data.get("lat")
                         progress["lon"] = data.get("lon")
-                    elif key in ("land_message", "ecology_message", "water_message"):
+                    elif key in (
+                        "land_message",
+                        "ecology_message",
+                        "water_message",
+                        "visual_message",
+                    ):
                         progress["radius_km"] = data.get("radius_km")
                     yield progress
             if "pipeline_failed" in delta:

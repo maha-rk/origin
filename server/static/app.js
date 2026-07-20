@@ -36,15 +36,16 @@ const historyList = document.getElementById("history-list");
 const traceProgress = document.getElementById("trace-progress");
 
 // Location Grounding, Claim Decomposition, Land Analysis, Ecology, Water
-// Risk, Cross-Reference, Verdict Synthesis — kept in sync with
-// orchestrator/pipeline.py's _MESSAGE_KEYS.
-const TOTAL_AGENTS = 7;
+// Risk, Visual Inspection, Cross-Reference, Verdict Synthesis — kept in
+// sync with orchestrator/pipeline.py's _MESSAGE_KEYS.
+const TOTAL_AGENTS = 8;
 let completedAgents = 0;
 
 const RADIUS_COLORS = {
   "Land Analysis": "#a9762c",
   Ecology: "#2f5d43",
   "Water Risk": "#3a6a8c",
+  "Visual Inspection": "#7a4fa0",
 };
 
 let map = null;
