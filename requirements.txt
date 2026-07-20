@@ -6,3 +6,5 @@ fastapi
 uvicorn[standard]
 python-dotenv
 mcp
+earthengine-api
+certifi

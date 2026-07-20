@@ -130,6 +130,24 @@ def _summarize_visual_evidence(visual: VisualInspectionResult) -> dict | None:
     }
 
 
+def _summarize_vegetation_evidence(vegetation: dict | None) -> dict | None:
+    if not vegetation or not vegetation.get("available"):
+        return None
+    return {
+        "source": "Google Earth Engine — Sentinel-2 NDVI vegetation index",
+        "recent_year": vegetation["recent_year"],
+        "baseline_year": vegetation["baseline_year"],
+        "recent_ndvi": vegetation["recent_ndvi"],
+        "baseline_ndvi": vegetation["baseline_ndvi"],
+        "ndvi_change": vegetation["ndvi_change"],
+        "note": (
+            "NDVI ranges roughly 0 (bare ground/water) to ~0.9 (dense healthy "
+            "vegetation); a negative ndvi_change indicates vegetation decline "
+            "between baseline_year and recent_year in this area."
+        ),
+    }
+
+
 def build_evidence_bundle(
     original_claim: str,
     sub_claims: list[str],
@@ -141,6 +159,7 @@ def build_evidence_bundle(
     water_radius_km: float,
     water_lookback_days: int,
     visual: VisualInspectionResult,
+    vegetation: dict | None,
 ) -> dict:
     evidence = {}
     land = _summarize_land_evidence(land_loss_by_year)
@@ -155,6 +174,9 @@ def build_evidence_bundle(
     visual_summary = _summarize_visual_evidence(visual)
     if visual_summary:
         evidence["visual_inspection"] = visual_summary
+    vegetation_summary = _summarize_vegetation_evidence(vegetation)
+    if vegetation_summary:
+        evidence["vegetation_trend"] = vegetation_summary
 
     return {
         "claim": original_claim,

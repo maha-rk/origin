@@ -22,6 +22,7 @@ routes through MCP's geocode_location tool.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from google.adk.agents import BaseAgent
@@ -50,6 +51,8 @@ ECOLOGY_RADIUS_KM = 10.0
 WATER_RADIUS_KM = 50.0
 WATER_LOOKBACK_DAYS = 30
 VISUAL_RADIUS_KM = 5.0
+VEGETATION_RADIUS_KM = 5.0
+VEGETATION_BASELINE_YEARS = 5
 
 
 def _pipeline_failed(ctx: InvocationContext) -> bool:
@@ -330,6 +333,52 @@ class VisualInspectionStep(BaseAgent):
         )
 
 
+class VegetationTrendStep(BaseAgent):
+    """Runs alongside the other evidence-gathering agents — real,
+    independently-computed NDVI vegetation-index data from Google Earth
+    Engine, comparing a recent year against a baseline several years
+    earlier. Optional: degrades to unavailable rather than failing the
+    pipeline if Earth Engine isn't configured or unreachable, same
+    reasoning as GDACS's has_coverage handling in WaterRiskStep."""
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        state = ctx.session.state
+        if _pipeline_failed(ctx):
+            return
+
+        _, location = read_agent_message(state["location_message"])
+        recent_year = datetime.now(timezone.utc).year - 1
+        baseline_year = recent_year - VEGETATION_BASELINE_YEARS
+        result = await mcp_client.call_tool(
+            "get_vegetation_trend",
+            {
+                "lat": location["lat"],
+                "lon": location["lon"],
+                "radius_km": VEGETATION_RADIUS_KM,
+                "recent_year": recent_year,
+                "baseline_year": baseline_year,
+            },
+            state["gfw_api_key"],
+        )
+        payload = {**result, "radius_km": VEGETATION_RADIUS_KM}
+        if result.get("available"):
+            change = result["ndvi_change"]
+            direction = "decreased" if change < 0 else "increased"
+            summary = (
+                f"NDVI vegetation index {direction} from {result['baseline_ndvi']} "
+                f"({baseline_year}) to {result['recent_ndvi']} ({recent_year})."
+            )
+        else:
+            summary = "Earth Engine vegetation data unavailable for this location."
+        msg = make_agent_message(self.name, summary, payload, state["context_id"])
+        yield Event(
+            author=self.name,
+            actions=EventActions(state_delta={"vegetation_message": msg}),
+        )
+
+
 class CrossReferenceStep(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -343,6 +392,7 @@ class CrossReferenceStep(BaseAgent):
         _, ecology_data = read_agent_message(state["ecology_message"])
         _, water_data = read_agent_message(state["water_message"])
         _, visual_data = read_agent_message(state["visual_message"])
+        _, vegetation_data = read_agent_message(state["vegetation_message"])
         _, decomposition_data = read_agent_message(state["decomposition_message"])
 
         # Explicit int() cast: A2A messages round-trip through a protobuf
@@ -377,6 +427,7 @@ class CrossReferenceStep(BaseAgent):
             water_data.get("radius_km", WATER_RADIUS_KM),
             water_data.get("days", WATER_LOOKBACK_DAYS),
             visual,
+            vegetation_data,
         )
         cross_ref = await asyncio.to_thread(
             cross_reference_claim, make_client(state["gemini_api_key"]), bundle

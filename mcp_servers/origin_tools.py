@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 
 from agents.location_grounding import geocode as _geocode
 from agents.location_grounding import resolve_with_confidence
-from data_clients import gdacs_client, gfw_client
+from data_clients import earth_engine_client, gdacs_client, gfw_client
 
 mcp = FastMCP("origin-evidence-tools")
 
@@ -79,6 +79,24 @@ def get_disaster_events(
         "has_coverage": result.has_coverage,
         "events": [vars(e) for e in result.events],
     }
+
+
+@mcp.tool()
+def get_vegetation_trend(
+    lat: float, lon: float, radius_km: float, recent_year: int, baseline_year: int
+) -> dict:
+    """Mean NDVI vegetation index for recent_year vs baseline_year within
+    radius_km of a point, via Google Earth Engine (Sentinel-2). An optional
+    evidence source, not a hard pipeline dependency: returns
+    {"available": false} if EARTH_ENGINE_PROJECT isn't set or Earth Engine
+    is unreachable, rather than raising."""
+    project = os.environ.get("EARTH_ENGINE_PROJECT")
+    if not project:
+        return {"available": False}
+    result = earth_engine_client.get_ndvi_trend(
+        project, lat, lon, radius_km, recent_year, baseline_year
+    )
+    return result or {"available": False}
 
 
 if __name__ == "__main__":

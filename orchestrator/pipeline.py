@@ -22,6 +22,7 @@ from orchestrator.agents import (
     EcologyStep,
     LandAnalysisStep,
     LocationGroundingStep,
+    VegetationTrendStep,
     VerdictSynthesisStep,
     VisualInspectionStep,
     WaterRiskStep,
@@ -47,6 +48,7 @@ def build_pipeline() -> SequentialAgent:
                     EcologyStep(name="Ecology"),
                     WaterRiskStep(name="WaterRisk"),
                     VisualInspectionStep(name="VisualInspection"),
+                    VegetationTrendStep(name="VegetationTrend"),
                 ],
             ),
             CrossReferenceStep(name="CrossReference"),
@@ -65,6 +67,7 @@ _MESSAGE_KEYS = [
     ("ecology_message", "Ecology"),
     ("water_message", "Water Risk"),
     ("visual_message", "Visual Inspection"),
+    ("vegetation_message", "Vegetation Trend"),
     ("cross_reference_message", "Cross-Reference"),
     ("verdict_message", "Verdict Synthesis"),
 ]
@@ -144,6 +147,7 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
                         "ecology_message",
                         "water_message",
                         "visual_message",
+                        "vegetation_message",
                     ):
                         progress["radius_km"] = data.get("radius_km")
                     yield progress
