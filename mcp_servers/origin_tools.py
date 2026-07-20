@@ -21,7 +21,13 @@ from mcp.server.fastmcp import FastMCP
 
 from agents.location_grounding import geocode as _geocode
 from agents.location_grounding import resolve_with_confidence
-from data_clients import carbon_registry_client, earth_engine_client, gdacs_client, gfw_client
+from data_clients import (
+    carbon_registry_client,
+    climate_trend_client,
+    earth_engine_client,
+    gdacs_client,
+    gfw_client,
+)
 
 mcp = FastMCP("origin-evidence-tools")
 
@@ -106,6 +112,30 @@ def get_nearby_carbon_projects(lat: float, lon: float, radius_km: float = 25.0) 
     Carbonmark's public API). Opportunistic: an empty list is the normal,
     honest result for most locations, not a failure."""
     return carbon_registry_client.find_nearby_carbon_projects(lat, lon, radius_km)
+
+
+@mcp.tool()
+def get_climate_trend(
+    lat: float,
+    lon: float,
+    recent_start_year: int,
+    recent_end_year: int,
+    baseline_start_year: int,
+    baseline_end_year: int,
+) -> dict:
+    """Mean temperature and annual precipitation for a recent multi-year
+    window vs an earlier baseline window, via NASA POWER (satellite/
+    reanalysis-derived, globally covered — no ground station required).
+    Returns {"available": false} if unreachable rather than raising."""
+    result = climate_trend_client.get_climate_trend(
+        lat,
+        lon,
+        recent_start_year,
+        recent_end_year,
+        baseline_start_year,
+        baseline_end_year,
+    )
+    return result or {"available": False}
 
 
 if __name__ == "__main__":

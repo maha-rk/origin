@@ -19,6 +19,7 @@ from orchestrator.a2a_messages import read_agent_message
 from orchestrator.agents import (
     CarbonProjectStep,
     ClaimDecompositionStep,
+    ClimateTrendStep,
     CrossReferenceStep,
     EcologyStep,
     LandAnalysisStep,
@@ -51,6 +52,7 @@ def build_pipeline() -> SequentialAgent:
                     VisualInspectionStep(name="VisualInspection"),
                     VegetationTrendStep(name="VegetationTrend"),
                     CarbonProjectStep(name="CarbonProject"),
+                    ClimateTrendStep(name="ClimateTrend"),
                 ],
             ),
             CrossReferenceStep(name="CrossReference"),
@@ -71,6 +73,7 @@ _MESSAGE_KEYS = [
     ("visual_message", "Visual Inspection"),
     ("vegetation_message", "Vegetation Trend"),
     ("carbon_message", "Carbon Registry"),
+    ("climate_message", "Climate Trend"),
     ("cross_reference_message", "Cross-Reference"),
     ("verdict_message", "Verdict Synthesis"),
 ]

@@ -54,6 +54,8 @@ VISUAL_RADIUS_KM = 5.0
 VEGETATION_RADIUS_KM = 5.0
 VEGETATION_BASELINE_YEARS = 5
 CARBON_RADIUS_KM = 25.0
+CLIMATE_WINDOW_YEARS = 3
+CLIMATE_BASELINE_GAP_YEARS = 8
 
 
 def _pipeline_failed(ctx: InvocationContext) -> bool:
@@ -418,6 +420,54 @@ class CarbonProjectStep(BaseAgent):
         )
 
 
+class ClimateTrendStep(BaseAgent):
+    """Runs alongside the other evidence-gathering agents — real
+    temperature/precipitation trend data from NASA POWER, comparing a
+    recent multi-year window against a baseline a decade earlier. Globally
+    covered (satellite/reanalysis-derived, not station-dependent) so it
+    works at any coordinate, unlike GDACS or a ground-station-based air
+    quality source would."""
+
+    async def _run_async_impl(
+        self, ctx: InvocationContext
+    ) -> AsyncGenerator[Event, None]:
+        state = ctx.session.state
+        if _pipeline_failed(ctx):
+            return
+
+        _, location = read_agent_message(state["location_message"])
+        recent_end = datetime.now(timezone.utc).year - 1
+        recent_start = recent_end - (CLIMATE_WINDOW_YEARS - 1)
+        baseline_end = recent_start - CLIMATE_BASELINE_GAP_YEARS
+        baseline_start = baseline_end - (CLIMATE_WINDOW_YEARS - 1)
+        result = await mcp_client.call_tool(
+            "get_climate_trend",
+            {
+                "lat": location["lat"],
+                "lon": location["lon"],
+                "recent_start_year": recent_start,
+                "recent_end_year": recent_end,
+                "baseline_start_year": baseline_start,
+                "baseline_end_year": baseline_end,
+            },
+            state["gfw_api_key"],
+        )
+        payload = dict(result)
+        if result.get("available"):
+            summary = (
+                f"Precipitation changed {result['precip_change_pct']:+.1f}% and "
+                f"temperature changed {result['temp_change_c']:+.2f}°C from "
+                f"{result['baseline_years']} to {result['recent_years']}."
+            )
+        else:
+            summary = "NASA POWER climate trend data unavailable for this location."
+        msg = make_agent_message(self.name, summary, payload, state["context_id"])
+        yield Event(
+            author=self.name,
+            actions=EventActions(state_delta={"climate_message": msg}),
+        )
+
+
 class CrossReferenceStep(BaseAgent):
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -433,6 +483,7 @@ class CrossReferenceStep(BaseAgent):
         _, visual_data = read_agent_message(state["visual_message"])
         _, vegetation_data = read_agent_message(state["vegetation_message"])
         _, carbon_data = read_agent_message(state["carbon_message"])
+        _, climate_data = read_agent_message(state["climate_message"])
         _, decomposition_data = read_agent_message(state["decomposition_message"])
 
         # Explicit int() cast: A2A messages round-trip through a protobuf
@@ -470,6 +521,7 @@ class CrossReferenceStep(BaseAgent):
             vegetation_data,
             carbon_data.get("projects", []),
             carbon_data.get("radius_km", CARBON_RADIUS_KM),
+            climate_data,
         )
         cross_ref = await asyncio.to_thread(
             cross_reference_claim, make_client(state["gemini_api_key"]), bundle

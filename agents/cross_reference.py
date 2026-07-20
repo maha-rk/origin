@@ -173,6 +173,24 @@ def _summarize_carbon_evidence(
     }
 
 
+def _summarize_climate_evidence(climate: dict | None) -> dict | None:
+    if not climate or not climate.get("available"):
+        return None
+    return {
+        "source": "NASA POWER — satellite/reanalysis temperature and precipitation trend",
+        "recent_years": climate["recent_years"],
+        "baseline_years": climate["baseline_years"],
+        "temp_change_c": climate["temp_change_c"],
+        "precip_change_pct": climate["precip_change_pct"],
+        "note": (
+            "A local precipitation decline alongside deforestation is "
+            "consistent with the documented physical link between large-scale "
+            "forest loss and reduced regional rainfall — this is correlational "
+            "local climate data, not proof of causation on its own."
+        ),
+    }
+
+
 def build_evidence_bundle(
     original_claim: str,
     sub_claims: list[str],
@@ -187,6 +205,7 @@ def build_evidence_bundle(
     vegetation: dict | None,
     carbon_projects: list[dict],
     carbon_radius_km: float,
+    climate: dict | None,
 ) -> dict:
     evidence = {}
     land = _summarize_land_evidence(land_loss_by_year)
@@ -207,6 +226,9 @@ def build_evidence_bundle(
     carbon_summary = _summarize_carbon_evidence(carbon_projects, carbon_radius_km)
     if carbon_summary:
         evidence["carbon_registry"] = carbon_summary
+    climate_summary = _summarize_climate_evidence(climate)
+    if climate_summary:
+        evidence["climate_trend"] = climate_summary
 
     return {
         "claim": original_claim,
