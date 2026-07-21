@@ -1,86 +1,110 @@
-# ORIGIN
+<div align="center">
+
+# 🌿 ORIGIN
 
 **Find the cause, not the symptom.**
 
-ORIGIN is an autonomous multi-agent system that investigates real-world
-environmental and land-use claims — deforestation, protected-area
-encroachment, water risk, carbon offset legitimacy — against real,
-verifiable evidence, and produces a traceable, confidence-scored verdict.
-It is not a chatbot and not a RAG-style retrieval answer: give it a claim
-tied to a physical location, and eleven agents fan out across real
-satellite, ecological, and climate data sources to check it, then
-cross-reference every finding against the claim's exact wording before a
-verdict is synthesized.
+![Gemini](https://img.shields.io/badge/Gemini-Vertex%20AI-7a4fa0)
+![Google ADK](https://img.shields.io/badge/Google%20ADK-Multi--Agent-4c8f68)
+![MCP](https://img.shields.io/badge/MCP-Real%20Tool%20Calls-163826)
+![A2A](https://img.shields.io/badge/A2A-Agent2Agent-2f5d43)
+![Earth Engine](https://img.shields.io/badge/Earth%20Engine-NDVI-1f8a8c)
+![Global Forest Watch](https://img.shields.io/badge/Global%20Forest%20Watch-Tree%20Loss-a9762c)
+![FastAPI](https://img.shields.io/badge/FastAPI-Live%20SSE-3a6a8c)
+![Python](https://img.shields.io/badge/Python-3.14-1c1b19)
 
-Built solo for the AI House × Google for Developers **AI Agent Builder
-Series 2026** hackathon.
+</div>
 
-## What it does
+---
 
-1. **Understand the claim.** Location Grounding resolves the claim's
-   location to coordinates; Claim Decomposition splits compound claims
-   ("reduced emissions by 40% *and* has no protected areas nearby") into
-   independently checkable parts — the two run concurrently.
-2. **Gather evidence in parallel.** Seven agents fan out at once against
-   real registries: tree-cover loss (Global Forest Watch), protected areas
-   (WDPA), water/disaster risk (GDACS), satellite visual inspection
-   (Gemini multimodal), vegetation trend (Google Earth Engine NDVI), carbon
-   offset project registries (Carbonmark), and long-run climate trend
-   (NASA POWER).
-3. **Cross-reference and decide.** Cross-Reference judges each piece of
-   evidence against the claim's exact wording — including negation ("no
-   deforestation" + a real tree-loss finding = contradiction, not
-   support) — then Verdict Synthesis produces a direction score, an
-   evidence-coverage score, and a written verdict with full source
-   citations. It never asserts a claim is definitively true or false;
-   everything is framed as evidence for a human reviewer to weigh.
+Most "AI agent" demos ask an LLM a question and print whatever it says
+back. That always bothered me — a model can sound completely certain about
+something it just made up. So ORIGIN doesn't work that way. You give it a
+claim about a place — "this site had no deforestation," "there's no
+protected area nearby," "this project reduced emissions by 40%" — and it
+refuses to just answer. It goes and checks: real satellite data, real
+government registries, real vegetation indices, actually pulled for the
+actual coordinates in your claim. Only after eleven agents come back with
+real findings does anything get synthesized into a verdict, and even then
+it's phrased as evidence for a human to weigh, not a verdict handed down
+from on high.
 
-If the location can't be resolved with reasonable confidence, ORIGIN stops
-and asks for a more specific location. It never guesses harder or attempts
-entity resolution (mapping a company name to a specific facility) — that's
-a deliberately separate, unscoped problem.
+I built the whole thing solo, and most of the actual work went into
+resisting the urge to fake anything — no seeded data, no "trust me" scores,
+no black-box confidence numbers. If ORIGIN says a claim is contradicted,
+you can click through to the exact hectare count, the exact NDVI delta,
+the exact source it came from.
 
-## Tech stack
+## How it actually works
 
-**Google:**
-- **Gemini** (via **Vertex AI** Express Mode) — multimodal visual
-  inspection of satellite imagery, evidence cross-referencing, verdict
-  synthesis, claim decomposition, location-signal extraction. Every call
-  uses Gemini's native structured-output mode (`response_schema`), not
-  prompt-and-hope JSON.
-- **Google ADK** (Agent Development Kit) — the whole pipeline is a real
-  `SequentialAgent`/`ParallelAgent` graph, not sequential function calls
-  dressed up as agents. Location Grounding and Claim Decomposition run
-  concurrently; all seven evidence agents fan out together once a location
-  resolves.
-- **A2A** (Agent2Agent protocol) — every inter-agent handoff is a real,
-  structured `a2a.types.Message`, not an ad hoc dict.
-- **MCP** (Model Context Protocol) — a real `FastMCP` server
-  (`mcp_servers/origin_tools.py`) exposes the data-fetching tools; Land
-  Analysis, Ecology, and Water Risk route through it as a genuine stdio
-  subprocess, not an in-process function call pretending to be one.
-- **Google Earth Engine** — real NDVI (vegetation-health) queries via the
-  Sentinel-2 collection.
+**1. Understand the claim.** Location Grounding pulls a place out of the
+claim text and resolves it to coordinates. Claim Decomposition splits
+compound claims ("reduced emissions by 40% *and* has no protected areas
+nearby") into pieces that can be checked independently. These two run at
+the same time — neither needs the other's output.
 
-**Real data sources (no fabricated or seeded data anywhere):**
-Global Forest Watch, WDPA, GDACS, Nominatim/OpenStreetMap, Carbonmark
-(aggregating Verra/Gold Standard/Puro registries), NASA POWER, Esri World
-Imagery (the actual satellite crop Gemini's visual inspection reads).
+**2. Go find out.** Seven agents fan out in parallel, each hitting a real
+data source: tree-cover loss from Global Forest Watch, protected-area
+proximity from WDPA, water/disaster risk from GDACS, a Gemini vision pass
+over actual satellite imagery, vegetation trend from Earth Engine's NDVI,
+carbon-offset project registries via Carbonmark, and long-run climate
+trend from NASA POWER. If a source has nothing to say, it says nothing —
+no fabricated "insufficient data" filler dressed up as a real result.
 
-**Delivery:** FastAPI + Server-Sent Events — the browser sees each agent's
-result the moment it lands, not a spinner-then-answer.
+**3. Weigh it, then decide.** Cross-Reference goes through every finding
+and checks it against the claim's *exact* wording — this is the part that
+actually catches things, like noticing "no deforestation" plus a real
+tree-loss finding is a contradiction, not two unrelated facts. Verdict
+Synthesis then turns that into a direction score, a coverage score, and a
+written verdict with every citation intact. It won't tell you a claim is
+definitively true or false — it tells you what the evidence says and lets
+you decide.
+
+If it can't pin down a location with real confidence, it stops and asks
+instead of guessing. It also won't try to resolve "Company X" into a
+specific facility — that's a different, harder problem, and bolting a bad
+guess onto it would undermine everything downstream that depends on the
+location being right.
+
+## What's actually real here
+
+- **Gemini**, through Vertex AI, does the multimodal vision pass on
+  satellite imagery, the evidence cross-referencing, verdict writing,
+  claim splitting, and location extraction — every call uses Gemini's
+  native structured-output mode, not a prompt begging for JSON and a
+  regex cleaning up whatever came back.
+- **Google ADK** composes the whole thing as a real
+  `SequentialAgent`/`ParallelAgent` graph. The concurrency is real, too —
+  Location Grounding and Claim Decomposition genuinely run at the same
+  time, and all seven evidence agents genuinely fan out together the
+  moment a location resolves.
+- **A2A** carries every handoff between agents as a structured
+  `a2a.types.Message`, not a dict I made up and called a protocol.
+- **MCP** — a real `FastMCP` server (`mcp_servers/origin_tools.py`) hosts
+  the data-fetching tools, and three of the evidence agents call into it
+  as an actual subprocess, not a function call wearing an MCP costume.
+- **Earth Engine** runs real NDVI queries against Sentinel-2 imagery.
+
+None of the underlying data is fabricated or seeded: Global Forest Watch,
+WDPA, GDACS, Nominatim, Carbonmark, NASA POWER, and Esri World Imagery (the
+actual image Gemini looks at) are all live, real, and queried fresh per
+investigation.
+
+**Delivery** is FastAPI over Server-Sent Events, so you watch each agent
+report back the moment it finishes instead of staring at a spinner.
 
 ## Getting started
 
 ### Prerequisites
 - Python (developed and tested on 3.14)
-- A [Gemini API key](https://aistudio.google.com/apikey) — see
-  `agents/gemini_config.py` if you hit a `limit: 0` quota wall on a plain
-  AI Studio key; this project routes through Vertex AI Express Mode
-  instead, which has a separate, genuinely free quota pool.
+- A [Gemini API key](https://aistudio.google.com/apikey) — if you hit a
+  `limit: 0` quota wall on a plain AI Studio key, see
+  `agents/gemini_config.py`. This routes through Vertex AI Express Mode
+  instead, which has its own genuinely free quota pool.
 - A [Global Forest Watch](https://www.globalforestwatch.org/) account and
-  API key — run `python3 scripts/gfw_create_key.py` to generate one (your
-  password stays local, typed via `getpass`, never leaves your terminal).
+  API key — `python3 scripts/gfw_create_key.py` will generate one for you
+  (your password stays local, typed via `getpass`, never leaves your
+  terminal).
 
 ### Install
 
@@ -97,11 +121,11 @@ cp .env.example .env
 # fill in GEMINI_API_KEY and GFW_API_KEY
 ```
 
-`EARTH_ENGINE_PROJECT` is optional — Vegetation Trend degrades gracefully
-(reports "no signal") without it. To enable it, register a Cloud project
-for Earth Engine's free noncommercial Community tier
+`EARTH_ENGINE_PROJECT` is optional — Vegetation Trend just reports "no
+signal" without it. To turn it on, register a Cloud project for Earth
+Engine's free noncommercial Community tier
 (console.cloud.google.com/earth-engine) and run `earthengine authenticate`
-once locally.
+once.
 
 ### Run
 
@@ -109,11 +133,11 @@ once locally.
 uvicorn server.app:app --reload
 ```
 
-Open `http://localhost:8000`. The Investigations tab is where you submit a
-claim; Layers explains the real tech stack in more depth; Saved reports is
-a history of everything you've investigated.
+Open `http://localhost:8000`. Investigations is where you submit a claim;
+Layers walks through the actual stack in more depth; Saved reports is
+everything you've investigated so far.
 
-There's also a CLI for a single claim without the UI:
+There's also a CLI if you just want one claim without the UI:
 
 ```bash
 python3 -m orchestrator.pipeline "the palm oil expansion at -9.98,-63.0 in Rondonia, Brazil caused no deforestation"
@@ -135,25 +159,3 @@ server/             FastAPI app + the frontend (vanilla HTML/CSS/JS, no
                     build step)
 docs/brief.md       The original project brief and scope boundaries
 ```
-
-## Known limitations
-
-- **GDACS has a confirmed coverage gap over South Asia** — a large swath
-  including Bengaluru, Chennai, Hyderabad, and even Colombo 404s on every
-  geometry/radius tested, while Mumbai, Delhi, and Bangladesh work fine on
-  the identical code path. This is a real gap in GDACS's own spatial
-  index, not a bug in this project — Water Risk treats it as "no
-  coverage" (an honest absence of signal), never a fabricated result.
-- **Cloud Run isn't wired in** — there's no live deployment, so the app
-  currently only runs locally. It would need a billing-enabled GCP
-  project, which this build has avoided so far the same way it avoided
-  one for Earth Engine (solved instead via Vertex AI Express Mode's
-  genuinely free quota pool, an option that doesn't exist for Cloud Run).
-- **The claims log runs on local SQLite, not BigQuery**
-  (`orchestrator/claims_log.py`) — same billing constraint. The row shape
-  is deliberately BigQuery-insert-ready if that changes.
-- **ReliefWeb** was evaluated and skipped — its API now requires a
-  pre-approved `appname` (manual registration, confirmed via a live 403),
-  not worth blocking on external approval outside anyone's control.
-- Entity resolution (mapping "Company X" to a specific facility) is a
-  deliberate non-goal, not a gap — see `docs/brief.md` for the reasoning.
