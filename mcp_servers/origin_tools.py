@@ -21,15 +21,19 @@ from mcp.server.fastmcp import FastMCP
 
 from agents.location_grounding import geocode as _geocode
 from agents.location_grounding import resolve_with_confidence
-from data_clients import (
-    carbon_registry_client,
-    climate_trend_client,
-    earth_engine_client,
-    gdacs_client,
-    gfw_client,
-)
 
 mcp = FastMCP("origin-evidence-tools")
+
+# Each tool below imports its one data client lazily, inside the function,
+# instead of all five eagerly at module level. This server runs as a fresh
+# subprocess per call (orchestrator/mcp_client.py), and up to six of these
+# spawn concurrently during the parallel evidence-gathering stage — eagerly
+# importing all five clients (including earthengine-api, ~40MB on its own)
+# into every single spawn regardless of which tool it's actually running
+# was measured at ~86MB per process versus ~20MB for what a given tool
+# genuinely needs, i.e. real, needless peak memory at exactly the moment
+# six processes are running at once. This is what was actually behind a
+# production OOM on a small deployment, not a hypothetical optimization.
 
 
 @mcp.tool()
@@ -59,6 +63,8 @@ def geocode_location(query: str) -> dict:
 def get_tree_cover_loss(lat: float, lon: float, radius_km: float = 5.0) -> list[dict]:
     """Annual tree cover loss (hectares) within radius_km of a point, via
     Global Forest Watch (30% canopy density threshold at year 2000)."""
+    from data_clients import gfw_client
+
     api_key = os.environ["GFW_API_KEY"]
     years = gfw_client.get_tree_cover_loss(api_key, lat, lon, radius_km)
     return [vars(y) for y in years]
@@ -68,6 +74,8 @@ def get_tree_cover_loss(lat: float, lon: float, radius_km: float = 5.0) -> list[
 def get_protected_areas(lat: float, lon: float, radius_km: float = 10.0) -> list[dict]:
     """Protected areas within radius_km of a point, via the World Database
     on Protected Areas (WDPA)."""
+    from data_clients import gfw_client
+
     api_key = os.environ["GFW_API_KEY"]
     areas = gfw_client.get_nearby_protected_areas(api_key, lat, lon, radius_km)
     return [vars(a) for a in areas]
@@ -80,6 +88,8 @@ def get_disaster_events(
     """Recent disaster/flood events within radius_km of a point in the last
     `days` days, via GDACS. `has_coverage: false` means GDACS has no signal
     for this region at all — distinct from confirming zero events."""
+    from data_clients import gdacs_client
+
     result = gdacs_client.get_events(lat, lon, radius_km, days)
     return {
         "has_coverage": result.has_coverage,
@@ -99,6 +109,9 @@ def get_vegetation_trend(
     project = os.environ.get("EARTH_ENGINE_PROJECT")
     if not project:
         return {"available": False}
+
+    from data_clients import earth_engine_client
+
     result = earth_engine_client.get_ndvi_trend(
         project, lat, lon, radius_km, recent_year, baseline_year
     )
@@ -111,6 +124,8 @@ def get_nearby_carbon_projects(lat: float, lon: float, radius_km: float = 25.0) 
     point, via Verra/Gold Standard/Puro registries (aggregated through
     Carbonmark's public API). Opportunistic: an empty list is the normal,
     honest result for most locations, not a failure."""
+    from data_clients import carbon_registry_client
+
     return carbon_registry_client.find_nearby_carbon_projects(lat, lon, radius_km)
 
 
@@ -127,6 +142,8 @@ def get_climate_trend(
     window vs an earlier baseline window, via NASA POWER (satellite/
     reanalysis-derived, globally covered — no ground station required).
     Returns {"available": false} if unreachable rather than raising."""
+    from data_clients import climate_trend_client
+
     result = climate_trend_client.get_climate_trend(
         lat,
         lon,

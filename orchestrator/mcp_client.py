@@ -12,11 +12,27 @@ Gemini clients.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+# Six of the seven evidence-gathering agents route through this MCP
+# subprocess, and ADK's ParallelAgent runs them genuinely concurrently —
+# meaning up to six full Python subprocesses (each with its own
+# interpreter + MCP framework overhead, independent of what it imports)
+# were spawning at once for a single investigation. Measured peak: ~845MB
+# for one investigation, which OOM-killed a 512MB deployment in
+# production. Capping concurrent subprocesses rather than removing the
+# per-call spawn entirely (which would mean sharing one live MCP session
+# across agents, and storing that connection somewhere ADK's
+# InMemorySessionService would try to deep-copy — see the pattern this
+# per-call design was already chosen to avoid, above). The agents mostly
+# wait on network I/O, not CPU, so capping concurrency costs some wall
+# time, not correctness.
+_SUBPROCESS_LIMIT = asyncio.Semaphore(2)
 
 
 async def call_tool(tool_name: str, arguments: dict, gfw_api_key: str):
@@ -25,7 +41,7 @@ async def call_tool(tool_name: str, arguments: dict, gfw_api_key: str):
         args=["-m", "mcp_servers.origin_tools"],
         env={**os.environ, "GFW_API_KEY": gfw_api_key},
     )
-    async with stdio_client(params) as (read, write):
+    async with _SUBPROCESS_LIMIT, stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.call_tool(tool_name, arguments)
