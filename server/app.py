@@ -27,9 +27,20 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 def index():
-    from fastapi.responses import FileResponse
+    from fastapi.responses import HTMLResponse
 
-    return FileResponse(STATIC_DIR / "index.html")
+    # Cache-busting: browsers otherwise keep serving a stale style.css/app.js
+    # after a deploy since /static/* has no versioning of its own — a real
+    # risk if a judge's browser caches an old asset mid-demo. Each file's
+    # own mtime is the version string, so it updates automatically on every
+    # edit without needing a manually-bumped version number.
+    html = (STATIC_DIR / "index.html").read_text()
+    css_version = int((STATIC_DIR / "style.css").stat().st_mtime)
+    js_version = int((STATIC_DIR / "app.js").stat().st_mtime)
+    html = html.replace(
+        '/static/style.css"', f'/static/style.css?v={css_version}"'
+    ).replace('/static/app.js"', f'/static/app.js?v={js_version}"')
+    return HTMLResponse(html)
 
 
 @app.get("/api/investigate")
