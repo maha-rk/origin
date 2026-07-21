@@ -79,6 +79,38 @@ _MESSAGE_KEYS = [
 ]
 
 
+def _int_or_none(value) -> int | None:
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def _land_stats(loss_by_year: list[dict]) -> dict:
+    """Same aggregation as cross_reference.py's `_summarize_land_evidence`,
+    duplicated here rather than imported — that one builds prose for
+    Gemini, this one builds a number for a UI card, and they'd only
+    coincidentally match signatures today. loss_by_year's numbers arrive as
+    floats (protobuf Struct round-trip in read_agent_message), hence the
+    int() casts on year."""
+    if not loss_by_year:
+        return {"years_with_data": 0, "total_loss_ha_last_5_years": 0.0, "most_recent_year": None}
+    years_sorted = sorted(loss_by_year, key=lambda y: y["year"])
+    most_recent = int(years_sorted[-1]["year"])
+    recent = [y for y in years_sorted if y["year"] >= most_recent - 4]
+    return {
+        "years_with_data": len(years_sorted),
+        "total_loss_ha_last_5_years": round(sum(y["loss_area_ha"] for y in recent), 2),
+        "most_recent_year": most_recent,
+    }
+
+
+def _nearest_and_count(items: list[dict]) -> dict:
+    """Shared by Ecology (protected_areas) and Carbon Registry (projects) —
+    both are lists of dicts with a distance_km field, and both cards need
+    the same two numbers: how many were found, and how close the nearest
+    one is."""
+    distances = [i["distance_km"] for i in items if i.get("distance_km") is not None]
+    return {"count": len(items), "nearest_km": min(distances) if distances else None}
+
+
 def _unwrap_task_group_error(e: Exception) -> Exception:
     """Two pipeline stages now run agents concurrently (Location Grounding +
     Claim Decomposition, then the evidence-gathering trio) — when a shared
@@ -144,18 +176,42 @@ async def stream_investigation(claim_text: str, gemini_api_key: str, gfw_api_key
                     progress = {"type": "progress", "agent": label, "summary": summary}
                     # Carry map-relevant fields for the frontend's location panel —
                     # coordinates once resolved, then each agent's search radius so
-                    # the map can show exactly what area was actually checked.
+                    # the map can show exactly what area was actually checked. Also
+                    # carry a small stats dict per evidence agent — the Evidence
+                    # Overview cards need real numbers (loss hectares, NDVI change,
+                    # etc), not just the prose summary already in `summary`.
                     if key == "location_message" and data.get("resolved"):
                         progress["lat"] = data.get("lat")
                         progress["lon"] = data.get("lon")
-                    elif key in (
-                        "land_message",
-                        "ecology_message",
-                        "water_message",
-                        "visual_message",
-                        "vegetation_message",
-                        "carbon_message",
-                    ):
+                        progress["display_name"] = data.get("display_name")
+                    elif key == "land_message":
+                        progress["radius_km"] = data.get("radius_km")
+                        progress["land_stats"] = _land_stats(data.get("loss_by_year") or [])
+                    elif key == "ecology_message":
+                        progress["radius_km"] = data.get("radius_km")
+                        progress["ecology_stats"] = _nearest_and_count(
+                            data.get("protected_areas") or []
+                        )
+                    elif key == "water_message":
+                        progress["radius_km"] = data.get("radius_km")
+                        progress["water_stats"] = {
+                            "has_coverage": data.get("has_coverage"),
+                            "event_count": len(data.get("events") or []),
+                        }
+                    elif key == "vegetation_message":
+                        progress["radius_km"] = data.get("radius_km")
+                        progress["vegetation_stats"] = {
+                            "available": data.get("available"),
+                            "ndvi_change": data.get("ndvi_change"),
+                            "recent_year": _int_or_none(data.get("recent_year")),
+                            "baseline_year": _int_or_none(data.get("baseline_year")),
+                        }
+                    elif key == "carbon_message":
+                        progress["radius_km"] = data.get("radius_km")
+                        progress["carbon_stats"] = _nearest_and_count(
+                            data.get("projects") or []
+                        )
+                    elif key == "visual_message":
                         progress["radius_km"] = data.get("radius_km")
                     yield progress
             if "pipeline_failed" in delta:

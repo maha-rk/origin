@@ -20,9 +20,18 @@ import json
 from dataclasses import dataclass, field
 
 from google import genai
+from pydantic import BaseModel
 
 from agents.cross_reference import CrossReferenceFinding, CrossReferenceResult
-from agents.gemini_config import MODEL, generate_json
+from agents.gemini_config import MODEL, generate_structured
+
+
+class _VerdictSummarySchema(BaseModel):
+    sub_claim_summaries: list[str]
+    # Only meaningful for compound claims — the prompt only asks Gemini to
+    # fill this in when is_compound is True; null the rest of the time is
+    # expected, not a validation failure.
+    overall_summary: str | None = None
 
 
 @dataclass
@@ -30,6 +39,13 @@ class ConfidenceScore:
     direction_score: float  # 0 = evidence entirely contradicts, 1 = entirely supports, 0.5 = mixed/even
     evidence_coverage: float  # fraction of findings that actually bore on the claim (not context/insufficient_data)
     explanation: str
+    # Raw counts behind direction_score — a 1.0 built from 5 findings and a
+    # 1.0 built from 1 finding are both "fully supported" by the same
+    # formula, but they're not equally strong claims. The UI's finding-tally
+    # bar needs these as real numbers, not parsed back out of `explanation`.
+    supports_count: int = 0
+    contradicts_count: int = 0
+    context_count: int = 0
 
 
 @dataclass
@@ -73,6 +89,9 @@ def compute_confidence(result: CrossReferenceResult) -> ConfidenceScore:
                 "evidence the claim is true, just an absence of evidence "
                 "either way.".format(len(result.findings))
             ),
+            supports_count=0,
+            contradicts_count=0,
+            context_count=len(result.findings),
         )
 
     direction = 0.5 + 0.5 * ((len(supports) - len(contradicts)) / decisive)
@@ -86,6 +105,9 @@ def compute_confidence(result: CrossReferenceResult) -> ConfidenceScore:
             f"{len(result.findings) - decisive} were context/insufficient-data "
             "and excluded from the direction score."
         ),
+        supports_count=len(supports),
+        contradicts_count=len(contradicts),
+        context_count=len(result.findings) - decisive,
     )
 
 
@@ -158,9 +180,6 @@ Write a short, plain-language summary (3-5 sentences) for EACH sub-claim
 below, in the same order they're given.{" Also write one overall summary "
 "(3-5 sentences) synthesizing across all sub-claims together." if is_compound else ""}
 
-Respond with strict JSON only, no markdown fences, in this exact shape:
-{{"sub_claim_summaries": ["...", ...]{', "overall_summary": "..."' if is_compound else ""}}}
-
 Location: {location_display_name!r}
 Sub-claims and their findings, in order: {json.dumps([
     {
@@ -172,7 +191,7 @@ Sub-claims and their findings, in order: {json.dumps([
     for item in per_sub_claim
 ], indent=2)}"""
 
-    data = generate_json(client, MODEL, prompt)
+    data = generate_structured(client, MODEL, prompt, _VerdictSummarySchema)
     sub_claim_summaries = data.get("sub_claim_summaries")
     if not isinstance(sub_claim_summaries, list) or len(sub_claim_summaries) != len(sub_claims):
         # Fall back per-item rather than discarding every summary just

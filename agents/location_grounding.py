@@ -18,8 +18,9 @@ import time
 from dataclasses import dataclass, field
 
 from google import genai
+from pydantic import BaseModel
 
-from agents.gemini_config import MODEL, generate_json, make_client
+from agents.gemini_config import MODEL, generate_structured, make_client
 from data_clients.geo_utils import haversine_km
 from data_clients.http_retry import request_with_retry
 
@@ -60,6 +61,11 @@ class LocationSignal:
     raw_claim: str = ""
 
 
+class _LocationSignalSchema(BaseModel):
+    has_location: bool
+    location_text: str | None = None
+
+
 @dataclass
 class GeocodeCandidate:
     display_name: str
@@ -96,13 +102,12 @@ If the claim contains BOTH explicit coordinates AND a place name (e.g. "at
 exact; a place name next to them is just orienting context and geocoding it
 instead would throw away precision the claim already gave you.
 
-Respond with strict JSON only, no markdown fences:
-{{"has_location": true or false, "location_text": "<the location phrase as it
-appears or a minimal cleaned version of it, or null if has_location is false>"}}
+location_text should be the location phrase as it appears (or a minimal
+cleaned version of it), or null if has_location is false.
 
 Claim: {claim_text!r}"""
 
-    data = generate_json(client, MODEL, prompt)
+    data = generate_structured(client, MODEL, prompt, _LocationSignalSchema)
 
     # Treat a self-contradictory response (has_location=True but no usable
     # location_text) the same as has_location=False rather than crashing —

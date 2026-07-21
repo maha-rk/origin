@@ -4,16 +4,46 @@
   --ink-soft: #56534c;
   --ink-faint: #8a877e;
   --rule: #ddd8cd;
+  --card: #fff;
   --accent: #2f5d43;
   --accent-soft: #eef2ec;
   --contradict: #8a3324;
   --contradict-soft: #f7ede9;
+  --contradict-text: #5c2419;
   --support: #2f5d43;
   --support-soft: #eef2ec;
+  --support-text: #1f3f2c;
+
+  /* Deliberately NOT overridden by the dark theme below — a handful of
+     elements (solid chip fills like the UNVERIFIED tag, the direction
+     marker dot) are meant to read as fixed dark-chip-with-light-text
+     regardless of theme, the same way a floating map badge doesn't
+     repaint itself when the rest of the page does. Using --ink/--paper
+     for those would have flipped them backwards in dark mode. */
+  --ink-fixed: #1c1b19;
+  --paper-fixed: #faf8f4;
 
   --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #171613;
+  --ink: #ece8de;
+  --ink-soft: #b6b0a2;
+  --ink-faint: #7d786a;
+  --rule: #37342c;
+  --card: #201e1a;
+  --accent: #6fb98d;
+  --accent-soft: #1c2a21;
+  --contradict: #e08a68;
+  --contradict-soft: #2f2119;
+  --contradict-text: #f0b49c;
+  --support: #6fb98d;
+  --support-soft: #1c2a21;
+  --support-text: #a8dcbe;
 }
 
 * {
@@ -31,26 +61,153 @@ body {
   font-family: var(--sans);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-.page {
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 4rem 2rem 6rem;
+.app-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
 }
 
-.brand {
-  margin-bottom: 3rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 3px double var(--ink);
+.sidebar {
+  flex: 0 0 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding: 2rem 1.4rem;
+  background: var(--card);
+  border-right: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
-.brand h1 {
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sidebar-mark {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.sidebar-wordmark {
   font-family: var(--serif);
-  font-size: 2.9rem;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.new-investigation-btn {
+  font-family: var(--sans);
+  font-size: 0.86rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  margin: 0;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 0;
+  padding: 0.65rem 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.new-investigation-btn:hover {
+  opacity: 0.88;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.nav-icon {
+  flex: 0 0 auto;
+}
+
+.nav-item:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.nav-item.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+/* Was a stray line of italic text floating in the empty space below the
+   nav — the top rule anchors it as a deliberate "motto" section instead
+   of looking orphaned, and the quote mark gives it some visual weight of
+   its own rather than reading as leftover body copy. */
+.sidebar-tagline {
+  margin: auto 0 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+  font-style: italic;
+  font-family: var(--serif);
+  line-height: 1.5;
+}
+
+.sidebar-tagline::before {
+  content: "“";
+  display: block;
+  color: var(--accent);
+  font-family: var(--serif);
+  font-style: normal;
+  font-size: 1.8rem;
+  line-height: 0.6;
+  margin-bottom: 0.3rem;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 3.5rem 2.5rem 6rem;
+}
+
+.view-inner {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* Wider than the shared default — the search bar, the elongated map, and
+   the 5-across evidence cards all benefit from the extra room. Home and
+   Layers stay at the narrower 880px reading width, which suits their
+   prose-heavy content better. */
+#view-investigations .view-inner {
+  max-width: 1120px;
+}
+
+/* Saved reports is a plain list, not prose — each row should use the full
+   content area (edge to edge of .content's own padding) rather than being
+   capped at reading width, so long claim text has real room before it
+   truncates and the list doesn't look like it's floating in empty space. */
+#view-saved-reports .view-inner {
+  max-width: none;
 }
 
 /* Case-file card treatment for the major report sections (site, trace,
@@ -59,56 +216,77 @@ body {
    with the sharp-corner, no-border-radius system rather than a generic
    "modern UI" glow. */
 .panel {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--rule);
   box-shadow: 7px 7px 0 var(--rule);
   padding: 1.85rem 2.1rem 2.3rem;
   margin-bottom: 3.25rem;
 }
 
-.tagline {
-  margin: 0.35rem 0 0;
-  color: var(--ink-soft);
-  font-size: 0.95rem;
-  font-style: italic;
-  font-family: var(--serif);
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.claim-form {
+.investigate-header {
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  margin-bottom: 3rem;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
 }
 
-.claim-form label {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.claim-search-form {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.claim-search-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.95rem;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--ink-faint);
-  font-weight: 600;
+  pointer-events: none;
 }
 
-.claim-form textarea {
+.claim-search-field textarea {
+  width: 100%;
   font-family: var(--sans);
-  font-size: 1.05rem;
-  line-height: 1.5;
+  font-size: 0.95rem;
+  line-height: 1.4;
   color: var(--ink);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--rule);
-  border-radius: 0;
-  padding: 0.9rem 1rem;
-  resize: vertical;
-  min-height: 3.4rem;
+  border-radius: 999px;
+  padding: 0.8rem 1.1rem 0.8rem 2.7rem;
+  resize: none;
+  min-height: 2.9rem;
+  max-height: 6rem;
 }
 
-.claim-form textarea:focus {
+.claim-search-field textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
 
-.claim-form > button {
-  align-self: flex-start;
+.claim-search-form > button {
+  flex: 0 0 auto;
   font-family: var(--sans);
   font-size: 0.9rem;
   font-weight: 600;
@@ -116,19 +294,60 @@ body {
   color: #fff;
   background: var(--accent);
   border: none;
-  border-radius: 0;
-  padding: 0.65rem 1.4rem;
+  border-radius: 999px;
+  padding: 0.75rem 1.5rem;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
 
-.claim-form > button:hover {
+.claim-search-form > button:hover {
   opacity: 0.88;
 }
 
-.claim-form > button:disabled {
+.claim-search-form > button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Matches the search field's min-height (2.9rem) so the whole header
+     row reads as one consistent height instead of the circular buttons
+     looking undersized next to the pill and Investigate button. */
+  width: 2.9rem;
+  height: 2.9rem;
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .example-chips {
@@ -136,7 +355,7 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.25rem;
+  margin: 0 0 2.5rem;
 }
 
 .example-label {
@@ -172,44 +391,490 @@ body {
   border-bottom: 1px solid var(--rule);
 }
 
+.home-title {
+  font-family: var(--serif);
+  font-size: 2.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0 0 1rem;
+}
+
+.home-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.home-lede {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  max-width: 62ch;
+  margin: 0;
+}
+
+.home-logo-mark {
+  flex: 0 0 auto;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.home-cta {
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 0;
+  padding: 0.7rem 1.4rem;
+  cursor: pointer;
+  margin-bottom: 3rem;
+  transition: opacity 0.15s ease;
+}
+
+.home-cta:hover {
+  opacity: 0.88;
+}
+
+.how-it-works,
+.how-to-use {
+  list-style: none;
+  margin: 0 0 3rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+
+.how-it-works li {
+  display: flex;
+  gap: 1.1rem;
+  align-items: flex-start;
+}
+
+.how-step-num {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.how-it-works h3 {
+  font-size: 1rem;
+  margin: 0 0 0.3rem;
+}
+
+.how-it-works p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.how-to-use {
+  counter-reset: use-step;
+  gap: 0.9rem;
+}
+
+.how-to-use li {
+  counter-increment: use-step;
+  position: relative;
+  padding-left: 2rem;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.how-to-use li::before {
+  content: counter(use-step) ".";
+  position: absolute;
+  left: 0;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.layers-lede {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin: -0.5rem 0 2.5rem;
+}
+
+/* An isometric-flavored stack. Each slice is one shape (clip-path kite:
+   pointed top, wide middle, flattened-point bottom) layered with three
+   translucent facets over the same shape to fake a lit top-left / dim
+   top-right / shadowed underside — deterministic percentage-based
+   clip-path against each element's own box, no cross-element pixel
+   guessing. Labels are absolutely positioned and centered with
+   translateY(-50%) on the exact pixel center of their diamond, computed
+   from the fixed slice geometry below — a CSS Grid row can't do this
+   once rows hold paragraphs of very different lengths, since row height
+   then depends on content and the row no longer lines up with its
+   same-index diamond. */
+.iso-section {
+  position: relative;
+  min-height: 700px;
+  margin-bottom: 1rem;
+}
+
+.iso-tower {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Slice height 152px, 0 vertical gap — the kite's own top/bottom points
+   meet exactly, so consecutive slices interlock with no seam to align. */
+.iso-diamond {
+  position: relative;
+  width: 220px;
+  height: 152px;
+  flex: 0 0 auto;
+}
+
+.iso-diamond-facet {
+  position: absolute;
+  inset: 0;
+  background: var(--c);
+}
+
+.iso-diamond-facet--base {
+  clip-path: polygon(50% 0%, 100% 36%, 55% 100%, 45% 100%, 0% 36%);
+  box-shadow: 0 14px 18px -10px rgba(28, 27, 25, 0.45);
+}
+
+.iso-diamond-facet--top-left {
+  clip-path: polygon(0% 36%, 50% 0%, 50% 36%);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.iso-diamond-facet--top-right {
+  clip-path: polygon(50% 0%, 100% 36%, 50% 36%);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.iso-diamond-facet--under {
+  clip-path: polygon(0% 36%, 100% 36%, 55% 100%, 45% 100%);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.iso-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  transform: translateY(-50%);
+}
+
+/* Centers of the four 152px slices, stacked with zero gap: 76, 228,
+   380, 532. Tower half-width is 110px (220px / 2). */
+.iso-label--right {
+  left: calc(50% + 110px);
+}
+
+.iso-label--left {
+  right: calc(50% + 110px);
+}
+
+.iso-label-body {
+  max-width: 19rem;
+}
+
+.iso-connector {
+  flex: 0 0 2.5rem;
+  height: 0;
+  border-top: 2px dotted var(--ink-faint);
+  position: relative;
+}
+
+.iso-connector--to-left::after,
+.iso-connector--to-right::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  width: 7px;
+  height: 7px;
+  border-bottom: 2px solid var(--ink-faint);
+}
+
+.iso-connector--to-left::after {
+  left: -1px;
+  border-left: 2px solid var(--ink-faint);
+  transform: rotate(45deg);
+}
+
+.iso-connector--to-right::after {
+  right: -1px;
+  border-right: 2px solid var(--ink-faint);
+  transform: rotate(-45deg);
+}
+
+.layer-ribbon {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: #fff;
+  padding: 0.55rem 1.3rem 0.55rem 1rem;
+  margin-bottom: 0.6rem;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+}
+
+.iso-label--right .layer-ribbon {
+  clip-path: polygon(14px 0, 100% 0, 100% 100%, 14px 100%, 0 50%);
+  padding: 0.55rem 1rem 0.55rem 1.3rem;
+}
+
+.layer-ribbon-index {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  opacity: 0.75;
+}
+
+.layer-ribbon-title {
+  font-family: var(--sans);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+/* A light-to-dark green ramp, top (user-facing) to bottom (foundational
+   data) — matches the diamonds' --c values exactly (fixed hex, not
+   var(--accent), so the ribbon and its diamond never drift apart from
+   each other if the theme changes what --accent means). */
+.layer-ribbon--delivery { background: #5ba57e; }
+.layer-ribbon--orchestration { background: #4c8f68; }
+.layer-ribbon--reasoning { background: #2f5d43; }
+.layer-ribbon--sources { background: #163826; }
+
+.iso-label-desc {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  line-height: 1.55;
+}
+
+.layer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.iso-label--right .layer-chips {
+  justify-content: flex-start;
+}
+
+.iso-label--left .layer-chips {
+  justify-content: flex-end;
+}
+
+.layer-chip {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--rule);
+  padding: 0.26rem 0.55rem;
+  white-space: nowrap;
+}
+
+.claim-result-header {
+  margin-bottom: 1.5rem;
+  animation: rise 0.4s ease;
+}
+
+.claim-result-title {
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0 0 0.6rem;
+}
+
+.claim-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.35rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.meta-item svg {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+}
+
 .location-panel {
   animation: rise 0.4s ease;
 }
 
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.map-mode-toggle {
+  display: flex;
+  border: 1px solid var(--rule);
+}
+
+.map-mode-btn {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: none;
+  padding: 0.42rem 0.95rem;
+  cursor: pointer;
+}
+
+.map-mode-btn + .map-mode-btn {
+  border-left: 1px solid var(--rule);
+}
+
+.map-mode-btn.active {
+  background: var(--ink-fixed);
+  color: var(--paper-fixed);
+}
+
+.map-toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.map-tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  background: var(--card);
+  border: 1px solid var(--rule);
+  padding: 0.42rem 0.8rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-tool-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.map-tool-btn--icon {
+  padding: 0.42rem;
+}
+
+.map-frame {
+  position: relative;
+}
+
+/* Leaflet's default zoom control is a rounded-corner, drop-shadowed blue
+   link — it clashes hard with the flat, sharp-corner case-file aesthetic
+   used everywhere else. Restyle to match instead of leaving Leaflet's
+   defaults as the one inconsistent element on the page. */
+.leaflet-control-zoom.leaflet-bar {
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.leaflet-control-zoom a {
+  border-radius: 0 !important;
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.leaflet-control-scale-line {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: var(--ink) !important;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+}
+
 .map {
-  height: 320px;
+  height: 420px;
   border: 1px solid var(--rule);
   border-radius: 0;
   background: var(--rule);
 }
 
-.map-footer {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
+/* Toggled via JS (adds/removes .is-fullscreen) instead of the Fullscreen
+   API — no extra permission prompt, and Leaflet just needs invalidateSize()
+   called after the layout change, which the toggle handler already does. */
+.map-frame.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 1.25rem;
+  background: var(--paper);
 }
 
-.location-caption {
-  margin: 0.6rem 0 0;
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  color: var(--ink-faint);
+.map-frame.is-fullscreen .map {
+  height: 100%;
 }
 
-.map-legend {
-  list-style: none;
+.map-legend-overlay {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 500;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--rule);
+  padding: 0.65rem 0.9rem;
+  box-shadow: 3px 3px 0 rgba(28, 27, 25, 0.08);
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.map-legend-overlay.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.map-legend-overlay .map-legend {
   display: flex;
-  gap: 1rem;
-  margin: 0.6rem 0 0;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
   padding: 0;
 }
 
 .map-legend li {
+  list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-size: 0.72rem;
   color: var(--ink-faint);
 }
@@ -219,19 +884,219 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.map-coords-overlay {
+  position: absolute;
+  bottom: 0.85rem;
+  right: 0.85rem;
+  z-index: 500;
+  margin: 0;
+  background: rgba(28, 27, 25, 0.82);
+  color: var(--paper-fixed);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.map-footer {
+  margin-top: 1rem;
+}
+
+.timelapse-heading {
+  font-family: var(--sans);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--ink-faint);
+  margin: 0 0 0.6rem;
+}
+
+.timelapse-embed-wrap {
+  border: 1px solid var(--rule);
+}
+
+.timelapse-embed {
+  width: 100%;
+  /* Google's own Timelapse page has a lot of its own chrome (header,
+     info sidebar, year scrubber) — at 440px tall it was all fighting for
+     room and reading as compressed; taller gives that layout room to
+     breathe. */
+  height: 700px;
+  border: none;
+  display: block;
 }
 
 .timelapse-link {
-  margin: 0.6rem 0 0;
-  font-size: 0.78rem;
-  color: var(--accent);
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.74rem;
+  color: var(--ink-faint);
   text-decoration: none;
   border-bottom: 1px solid transparent;
 }
 
 .timelapse-link:hover,
 .timelapse-link:focus-visible {
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--ink-faint);
+}
+
+.evidence-overview {
+  animation: rise 0.4s ease;
+}
+
+.evidence-cards {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+}
+
+.evidence-card {
+  border: 1px solid var(--rule);
+  padding: 1rem 1.1rem;
+  min-width: 0;
+}
+
+.evidence-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+  /* Some titles ("Vegetation Trend", "Carbon Registry", "Protected
+     Areas") wrap to two lines at this card width while shorter ones
+     ("Land Analysis", "Water Risk") don't — without a fixed height here,
+     everything below the title in each card starts at a different Y
+     depending on which card it is, which is what actually reads as
+     "scattered" rather than a real grid. */
+  min-height: 2.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.evidence-card-title svg {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+
+.evidence-card-sub {
+  margin: 0 0 0.3rem;
+  min-height: 1.05rem;
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
+.evidence-card-value {
+  margin: 0 0 0.3rem;
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  font-weight: 600;
+  line-height: 1.2;
+  min-height: 3.1rem;
+  display: flex;
+  align-items: flex-end;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+
+/* An empty/no-signal result ("None", "No signal") isn't really a stat —
+   rendering it in the same bold serif weight as a real number (25
+   year(s), +0.09) makes it visually compete for attention it shouldn't
+   have. Muting it lets cards with genuine findings read as the ones that
+   actually matter at a glance. */
+.evidence-card-value.is-empty {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-faint);
+}
+
+.evidence-card-context {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.evidence-card-context.is-negative {
+  color: var(--contradict);
+  font-weight: 600;
+}
+
+.evidence-card-context.is-positive {
+  color: var(--support);
+  font-weight: 600;
+}
+
+.timeline-section {
+  animation: rise 0.4s ease;
+}
+
+.timeline-steps {
+  display: flex;
+  align-items: flex-start;
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0 0;
+  overflow-x: auto;
+}
+
+.timeline-step {
+  flex: 1 1 0;
+  min-width: 6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
+.timeline-step-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--rule);
+  color: var(--ink-faint);
+  background: var(--card);
+  margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 1;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.timeline-step.is-done .timeline-step-circle {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.timeline-step-label {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  line-height: 1.3;
+  padding: 0 0.3rem;
+}
+
+.timeline-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 0.95rem;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--rule);
+  z-index: 0;
+}
+
+.timeline-step.is-done:not(:last-child)::after {
+  background: var(--accent);
 }
 
 .trace-header {
@@ -284,6 +1149,40 @@ body {
 .trace-summary {
   color: var(--ink-soft);
   font-size: 0.95rem;
+}
+
+/* Sits as the trace list's last <li> while streaming — addTraceItem()
+   always inserts new items above it, so it visually stays pinned right
+   beneath whichever finding was most recently added instead of at a
+   fixed spot on the page. */
+.trace-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding-top: 0.15rem;
+  animation: rise 0.35s ease;
+}
+
+.trace-spinner {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--rule);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.trace-loading-label {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--ink-faint);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes rise {
@@ -402,6 +1301,51 @@ body {
   margin-bottom: 0.6rem;
 }
 
+/* Reuses .confidence-row's exact grid so the bar lines up under the
+   direction track above it — a 1.0 direction score built from 5 findings
+   and one built from a single finding are both "fully supported" by the
+   formula, but they're not equally strong claims, and the score alone
+   doesn't show that difference. */
+.finding-tally-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr 3rem;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+
+.finding-tally-bar {
+  display: flex;
+  height: 6px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+}
+
+.finding-tally-segment {
+  flex-shrink: 1;
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.finding-tally-segment--contradicts {
+  background: var(--contradict);
+}
+
+.finding-tally-segment--context {
+  background: var(--ink-faint);
+  opacity: 0.35;
+}
+
+.finding-tally-segment--supports {
+  background: var(--support);
+}
+
+.finding-tally-label {
+  margin: 0.4rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+}
+
 .confidence-label {
   font-size: 0.85rem;
   color: var(--ink-soft);
@@ -439,56 +1383,46 @@ body {
   background: var(--ink-faint);
 }
 
-/* Direction gauge — a needle sweeping between "contradicts" and
-   "supports" is a more direct visual metaphor for a polarized score than
-   a bar, and reads faster at a glance than a decimal. The three bands
-   use the exact same 0.35/0.65 thresholds as directionStatusClass() in
-   app.js so the gauge and the numeric label never disagree. */
-.gauge-wrap {
-  display: flex;
-  justify-content: center;
+/* Direction indicator — a marker's left-offset on a fixed three-zone
+   track. Deliberately not a rotating needle: an earlier SVG gauge kept
+   rendering off-axis across browsers, and a plain positional style has no
+   transform-origin/pivot for a browser to disagree about. The zone
+   boundaries (35%/65%) match directionStatusClass()'s 0.35/0.65
+   thresholds in app.js exactly, so the track and the numeric label never
+   disagree. */
+.direction-track {
+  position: relative;
+  height: 9px;
+  border: 1px solid var(--rule);
+  background: linear-gradient(
+    to right,
+    var(--contradict) 0%,
+    var(--contradict) 35%,
+    var(--ink-faint) 35%,
+    var(--ink-faint) 65%,
+    var(--support) 65%,
+    var(--support) 100%
+  );
+  opacity: 0.85;
 }
 
-.direction-gauge {
-  overflow: visible;
-}
-
-.gauge-band {
-  fill: none;
-  stroke-width: 14;
-}
-
-.gauge-band--contradicts {
-  stroke: var(--contradict);
-  opacity: 0.82;
-}
-
-.gauge-band--mixed {
-  stroke: var(--ink-faint);
-  opacity: 0.5;
-}
-
-.gauge-band--supports {
-  stroke: var(--support);
-  opacity: 0.82;
-}
-
-.gauge-needle {
-  stroke: var(--ink);
-  stroke-width: 3;
-  stroke-linecap: round;
-  /* transform-box makes transform-origin's px values resolve against the
-     SVG viewBox coordinate system explicitly — without it, some browsers
-     default to the needle line's own bounding box instead, rotating it
-     around the wrong point (the rotation angle ends up correct but the
-     needle visibly swings around an offset pivot). */
-  transform-box: view-box;
-  transform-origin: 100px 100px;
-  transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.gauge-pivot {
-  fill: var(--ink);
+.direction-marker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 13px;
+  height: 13px;
+  background: var(--ink-fixed);
+  /* The ring's job is to separate the dot from the track color directly
+     beneath it — that track sits inside a .panel, so the ring should
+     match the panel surface (--card), not the outer page (--paper);
+     using --paper here would have looked correct only by coincidence
+     (both were once #fff) and broken once dark mode gave them different
+     values. */
+  border: 2px solid var(--card);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: left 0.5s ease;
 }
 
 .confidence-value {
@@ -554,13 +1488,13 @@ body {
 
 .evidence-column:nth-child(1) .evidence-list li {
   background: var(--contradict-soft);
-  color: #5c2419;
+  color: var(--contradict-text);
   border-left: 2px solid var(--contradict);
 }
 
 .evidence-column:nth-child(2) .evidence-list li {
   background: var(--support-soft);
-  color: #1f3f2c;
+  color: var(--support-text);
   border-left: 2px solid var(--support);
 }
 
@@ -581,10 +1515,10 @@ body {
 #gaps-section .evidence-list li {
   background: repeating-linear-gradient(
     135deg,
-    #fff,
-    #fff 8px,
-    #f2efe4 8px,
-    #f2efe4 16px
+    var(--card),
+    var(--card) 8px,
+    var(--paper) 8px,
+    var(--paper) 16px
   );
   border: 1px solid var(--rule);
   color: var(--ink-soft);
@@ -597,8 +1531,8 @@ body {
   position: absolute;
   left: 0.7rem;
   top: 0.7rem;
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--ink-fixed);
+  color: var(--paper-fixed);
   font-family: var(--mono);
   font-size: 0.62rem;
   letter-spacing: 0.08em;
@@ -722,16 +1656,117 @@ body {
   white-space: nowrap;
 }
 
+.history-empty {
+  color: var(--ink-faint);
+  font-style: italic;
+  font-size: 0.88rem;
+  padding: 0.5rem 0.4rem;
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+  }
+  .sidebar-tagline {
+    display: none;
+  }
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .nav-item {
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+  .nav-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+  .content {
+    padding: 2rem 1.5rem 4rem;
+  }
+  .iso-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-height: 0;
+  }
+  .iso-tower {
+    display: none;
+  }
+  .iso-label,
+  .iso-label--left,
+  .iso-label--right {
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
+    transform: none;
+    width: 100%;
+  }
+  .iso-label-body {
+    max-width: none;
+  }
+  .iso-connector {
+    display: none;
+  }
+  .layer-ribbon,
+  .iso-label--right .layer-ribbon {
+    clip-path: none;
+    padding: 0.55rem 1rem;
+  }
+  .iso-label--left .layer-chips {
+    justify-content: flex-start;
+  }
+  .evidence-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .map {
+    height: 320px;
+  }
+  .timelapse-embed {
+    height: 480px;
+  }
+}
+
 @media (max-width: 560px) {
-  .page {
-    padding: 3rem 1.25rem 4rem;
+  .content {
+    padding: 1.75rem 1.25rem 3rem;
   }
   .panel {
     padding: 1.4rem 1.25rem 1.75rem;
     box-shadow: 4px 4px 0 var(--rule);
   }
-  .brand h1 {
+  .home-title {
     font-size: 2.2rem;
+  }
+  .home-logo-mark {
+    display: none;
+  }
+  .investigate-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .header-actions {
+    justify-content: flex-end;
+  }
+  .evidence-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .map {
+    height: 260px;
+  }
+  .map-legend-overlay {
+    max-width: 60%;
   }
   .evidence-columns {
     grid-template-columns: 1fr;
@@ -755,4 +1790,56 @@ body {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Export ("Save as PDF") is just window.print() with this stylesheet —
+   everything except the claim title and the verdict card is hidden, so
+   what comes out is a clean report instead of a screenshot of the whole
+   dashboard (sidebar, map, live trace log, etc). Dark mode is also
+   irrelevant here: printed output should be quiet or standard, not
+   whatever theme happened to be active on screen. */
+@media print {
+  .sidebar,
+  .investigate-header,
+  .example-chips,
+  #location-panel,
+  #evidence-overview,
+  #timeline-section,
+  #trace {
+    display: none !important;
+  }
+
+  :root,
+  :root[data-theme="dark"] {
+    --paper: #fff;
+    --ink: #1c1b19;
+    --ink-soft: #56534c;
+    --ink-faint: #8a877e;
+    --rule: #ddd8cd;
+    --card: #fff;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .content {
+    padding: 0;
+  }
+
+  #view-investigations .view-inner {
+    max-width: none;
+  }
+
+  .panel {
+    box-shadow: none;
+    border: 1px solid #ccc;
+    margin-bottom: 1.5rem;
+  }
+
+  .direction-track,
+  .meter {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
 }

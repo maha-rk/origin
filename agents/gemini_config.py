@@ -15,11 +15,12 @@ exists specifically so a live demo doesn't die mid-recording on a transient
 rate limit.
 """
 
-import json
 import time
 
 from google import genai
 from google.genai import errors as genai_errors
+from google.genai import types as genai_types
+from pydantic import BaseModel
 
 MODEL = "gemini-2.5-flash-lite"
 
@@ -35,7 +36,12 @@ def make_client(api_key: str) -> genai.Client:
     return genai.Client(api_key=api_key, vertexai=True)
 
 
-def generate_with_retry(client: genai.Client, model: str, contents: str):
+def generate_with_retry(
+    client: genai.Client,
+    model: str,
+    contents: str,
+    config: genai_types.GenerateContentConfig | None = None,
+):
     """client.models.generate_content with exponential backoff on 429/503.
 
     Delays: 4s, 8s, 16s, 32s between the 5 attempts (~1 minute worst case)
@@ -45,7 +51,9 @@ def generate_with_retry(client: genai.Client, model: str, contents: str):
     last_error = None
     for attempt in range(MAX_ATTEMPTS):
         try:
-            return client.models.generate_content(model=model, contents=contents)
+            return client.models.generate_content(
+                model=model, contents=contents, config=config
+            )
         except genai_errors.APIError as e:
             if e.code not in RETRYABLE_CODES or attempt == MAX_ATTEMPTS - 1:
                 raise
@@ -54,27 +62,37 @@ def generate_with_retry(client: genai.Client, model: str, contents: str):
     raise last_error
 
 
-def generate_json(client: genai.Client, model: str, prompt: str) -> dict:
-    """generate_with_retry, then parse the response as strict JSON.
+def generate_structured(
+    client: genai.Client, model: str, prompt: str, schema: type[BaseModel]
+) -> dict:
+    """generate_with_retry with Gemini's native structured-output mode
+    (response_mime_type + response_schema) instead of asking for JSON in
+    the prompt text and hoping — the previous approach (prompt instruction
+    + manually stripping markdown fences) had a real observed failure mode
+    where a stray comment or truncated fence broke parsing. response_schema
+    makes the API itself guarantee schema-valid output, so that whole class
+    of failure is gone by construction rather than caught after the fact.
 
-    Every prompt in this codebase asks Gemini for strict JSON, but nothing
-    guarantees it complies — occasional stray prose or truncated output is
-    a real, observed failure mode, not a hypothetical. Centralizing the
-    fence-stripping + parsing here means all three call sites raise the
-    same clear, diagnosable error instead of three separate bare
-    JSONDecodeError/KeyError crashes with no context on what Gemini
-    actually returned.
+    Returns a plain dict (via the validated Pydantic model's model_dump())
+    rather than the model instance, so call sites keep using the same
+    defensive `.get()`-based parsing they already had — schema validation
+    is a second, stronger layer on top of that, not a replacement for it.
     """
-    response = generate_with_retry(client, model, prompt)
-    text = response.text.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
+    config = genai_types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=schema,
+    )
+    response = generate_with_retry(client, model, prompt, config=config)
+    if response.parsed is not None:
+        return response.parsed.model_dump()
+    # The SDK only leaves `.parsed` unset if the response text didn't
+    # actually validate against the schema despite the API being asked for
+    # it — validate directly against the raw text so that edge case still
+    # produces a clear, diagnosable error instead of an AttributeError.
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as e:
+        return schema.model_validate_json(response.text).model_dump()
+    except Exception as e:
         raise ValueError(
-            f"Gemini did not return valid JSON ({e}). Raw response: {text[:500]!r}"
+            f"Gemini structured response did not match the expected schema "
+            f"({e}). Raw response: {response.text[:500]!r}"
         ) from e

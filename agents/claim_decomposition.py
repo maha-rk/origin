@@ -16,12 +16,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from google import genai
+from pydantic import BaseModel
 
-from agents.gemini_config import MODEL, generate_json
+from agents.gemini_config import MODEL, generate_structured
 
 
 @dataclass
 class DecompositionResult:
+    sub_claims: list[str]
+
+
+class _DecompositionSchema(BaseModel):
     sub_claims: list[str]
 
 
@@ -42,12 +47,9 @@ claim; the homes detail is context, not a separate assertion to verify.
 If the claim is a single assertion, return it as the only item in
 "sub_claims", essentially unchanged (don't rephrase it unnecessarily).
 
-Respond with strict JSON only, no markdown fences:
-{{"sub_claims": ["...", ...]}}
-
 Claim: {claim_text!r}"""
 
-    data = generate_json(client, MODEL, prompt)
+    data = generate_structured(client, MODEL, prompt, _DecompositionSchema)
     sub_claims = data.get("sub_claims")
     if not isinstance(sub_claims, list):
         sub_claims = []

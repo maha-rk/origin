@@ -4,125 +4,437 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ORIGIN</title>
+  <script>
+    // Runs before CSS paints anything, so a saved dark-mode preference
+    // applies immediately instead of flashing light-then-dark on load.
+    try {
+      if (localStorage.getItem("origin-theme") === "dark") {
+        document.documentElement.dataset.theme = "dark";
+      }
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div class="page">
-    <header class="brand">
-      <h1>ORIGIN</h1>
-      <p class="tagline">Find the cause, not the symptom.</p>
-    </header>
-
-    <form id="claim-form" class="claim-form">
-      <label for="claim-input">Claim to investigate</label>
-      <textarea
-        id="claim-input"
-        rows="2"
-        placeholder="e.g. this proposed development site near Mandya, Karnataka has no environmental risk"
-        required
-      ></textarea>
-      <button type="submit" id="submit-btn">Investigate</button>
-      <div class="example-chips">
-        <span class="example-label">Try:</span>
-        <button type="button" class="example-chip" data-claim="this proposed development site at 26.6631,93.3678 reduced emissions by 40% and has no protected areas nearby">Compound claim, Assam</button>
-        <button type="button" class="example-chip" data-claim="the palm oil expansion at -9.98,-63.0 in Rondonia, Brazil caused no deforestation">Deforestation, Brazil</button>
-        <button type="button" class="example-chip" data-claim="the solar farm proposed near Mandya, Karnataka">Ambiguous location</button>
-      </div>
-    </form>
-
-    <section id="location-panel" class="location-panel panel" hidden>
-      <h2 class="section-label">Site</h2>
-      <div id="map-canvas" class="map"></div>
-      <div class="map-footer">
-        <p id="location-caption" class="location-caption"></p>
-        <ul class="map-legend">
-          <li><span class="legend-swatch" style="background:#a9762c"></span>Land Analysis</li>
-          <li><span class="legend-swatch" style="background:#2f5d43"></span>Ecology</li>
-          <li><span class="legend-swatch" style="background:#3a6a8c"></span>Water Risk</li>
-          <li><span class="legend-swatch" style="background:#7a4fa0"></span>Visual Inspection</li>
-          <li><span class="legend-swatch" style="background:#1f8a8c"></span>Vegetation Trend</li>
-          <li><span class="legend-swatch" style="background:#b8860b"></span>Carbon Registry</li>
-          <li><span class="legend-swatch" style="background:#e5007d"></span>Tree cover loss (UMD/GFW)</li>
-        </ul>
-        <a id="timelapse-link" class="timelapse-link" href="#" target="_blank" rel="noopener">View change over time on Google Earth Timelapse &rarr;</a>
-      </div>
-    </section>
-
-    <section id="trace" class="trace panel" hidden>
-      <div class="trace-header">
-        <h2 class="section-label">Investigation</h2>
-        <span id="trace-progress" class="trace-progress"></span>
-      </div>
-      <ol id="trace-list" class="trace-list"></ol>
-    </section>
-
-    <section id="verdict" class="verdict panel" hidden>
-      <h2 class="section-label">Verdict</h2>
-
-      <div id="verdict-unresolved" class="unresolved" hidden>
-        <span class="verdict-stamp unresolved-stamp">Unresolved</span>
-        <p id="verdict-unresolved-reason"></p>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <svg class="sidebar-mark" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 21c-4.5 0-8-3.5-8-8 0-6 8-11 8-11s8 5 8 11c0 4.5-3.5 8-8 8z"/>
+          <path d="M12 21V9"/>
+        </svg>
+        <span class="sidebar-wordmark">ORIGIN</span>
       </div>
 
-      <div id="verdict-resolved" hidden>
-        <div class="verdict-stamp-row">
-          <span id="verdict-stamp" class="verdict-stamp"></span>
-          <span id="verdict-case-id" class="verdict-case-id"></span>
+      <button id="new-investigation-btn" class="new-investigation-btn" type="button">+ New investigation</button>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-view="home" type="button">
+          <svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/></svg>
+          Home
+        </button>
+        <button class="nav-item" data-view="investigations" type="button">
+          <svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5.2-5.2"/></svg>
+          Investigations
+        </button>
+        <button class="nav-item" data-view="saved-reports" type="button">
+          <svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3.5h12v17l-6-4.2-6 4.2z"/></svg>
+          Saved reports
+        </button>
+        <button class="nav-item" data-view="layers" type="button">
+          <svg class="nav-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3 2 9l10 6 10-6z"/><path d="M2 14l10 6 10-6" stroke-linecap="round"/></svg>
+          Layers
+        </button>
+      </nav>
+
+      <p class="sidebar-tagline">Find the cause, not the symptom.</p>
+    </aside>
+
+    <main class="content">
+
+      <section id="view-home" class="view">
+        <div class="view-inner home-inner">
+          <h1 class="home-title">ORIGIN</h1>
+          <div class="home-intro">
+            <p class="home-lede">
+              ORIGIN investigates environmental and land-use claims — deforestation,
+              protected-area encroachment, water risk, carbon offset legitimacy, and more —
+              by checking them against real satellite, ecological, and climate data instead
+              of taking them at their word. Every verdict traces back to the evidence behind
+              it, so you can see exactly why, not just what.
+            </p>
+            <svg class="home-logo-mark" viewBox="0 0 24 24" width="120" height="120" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 21c-4.5 0-8-3.5-8-8 0-6 8-11 8-11s8 5 8 11c0 4.5-3.5 8-8 8z"/>
+              <path d="M12 21V9"/>
+            </svg>
+          </div>
+
+          <button id="home-start-btn" class="home-cta" type="button">Start an investigation &rarr;</button>
+
+          <h2 class="section-label">How it works</h2>
+          <ol class="how-it-works">
+            <li>
+              <span class="how-step-num">1</span>
+              <div>
+                <h3>Understand the claim</h3>
+                <p>Location Grounding resolves the claim's location to coordinates, while Claim Decomposition splits compound assertions into independently checkable parts — run concurrently, not one after the other.</p>
+              </div>
+            </li>
+            <li>
+              <span class="how-step-num">2</span>
+              <div>
+                <h3>Gather evidence in parallel</h3>
+                <p>Seven agents fan out at once across real registries: tree-cover loss (Global Forest Watch), protected areas (WDPA), water and disaster risk (GDACS), satellite visual inspection (Gemini), vegetation trend (Earth Engine NDVI), carbon project registries (Carbonmark), and long-run climate trend (NASA POWER).</p>
+              </div>
+            </li>
+            <li>
+              <span class="how-step-num">3</span>
+              <div>
+                <h3>Cross-reference and decide</h3>
+                <p>Cross-Reference weighs every finding against the claim, then Verdict Synthesis produces a direction score, an evidence-coverage score, and a written verdict with full source citations — never a bare opinion.</p>
+              </div>
+            </li>
+          </ol>
+
+          <h2 class="section-label">How to use it</h2>
+          <ol class="how-to-use">
+            <li>Describe a claim about a specific place — a coordinate pair, or a named location.</li>
+            <li>Watch each agent report back live as it resolves the location and checks real data sources.</li>
+            <li>Read the verdict: contradicting vs. supporting evidence, an evidence-coverage score, and the sources behind every finding.</li>
+          </ol>
         </div>
-        <p id="verdict-summary" class="verdict-summary"></p>
+      </section>
 
-        <div class="confidence">
-          <div class="confidence-row">
-            <span class="confidence-label">Direction</span>
-            <div class="gauge-wrap">
-              <svg class="direction-gauge" viewBox="0 0 200 115" width="200" height="115" aria-hidden="true">
-                <path d="M 10,100 A 90,90 0 0 1 59.1,19.8" class="gauge-band gauge-band--contradicts"></path>
-                <path d="M 59.1,19.8 A 90,90 0 0 1 140.9,19.8" class="gauge-band gauge-band--mixed"></path>
-                <path d="M 140.9,19.8 A 90,90 0 0 1 190,100" class="gauge-band gauge-band--supports"></path>
-                <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" class="gauge-needle"></line>
-                <circle cx="100" cy="100" r="5" class="gauge-pivot"></circle>
-              </svg>
+      <section id="view-investigations" class="view" hidden>
+        <div class="view-inner">
+
+          <div class="investigate-header">
+            <form id="claim-form" class="claim-search-form">
+              <label for="claim-input" class="sr-only">Claim to investigate</label>
+              <div class="claim-search-field">
+                <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5.2-5.2"/></svg>
+                <textarea
+                  id="claim-input"
+                  rows="1"
+                  placeholder="Investigate a claim… e.g. this proposed development site near Mandya, Karnataka has no environmental risk"
+                  required
+                ></textarea>
+              </div>
+              <button type="submit" id="submit-btn">Investigate</button>
+            </form>
+            <div class="header-actions">
+              <button id="share-btn" class="icon-btn" type="button" title="Copy a shareable link to this investigation">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+              </button>
+              <button id="export-btn" class="icon-btn" type="button" title="Save this investigation as a PDF" disabled>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M8 10l4 4 4-4"/><path d="M5 19h14"/></svg>
+              </button>
+              <button id="help-btn" class="icon-btn" type="button" title="How ORIGIN works">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.7 2.7 0 1 1 3.9 2.4c-.9.5-1.2 1-1.2 2"/><circle cx="12" cy="17" r="0.75" fill="currentColor" stroke="none"/></svg>
+              </button>
+              <button id="theme-btn" class="icon-btn" type="button" title="Toggle dark mode">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
+              </button>
             </div>
-            <span id="direction-value" class="confidence-value"></span>
           </div>
-          <div class="confidence-row">
-            <span class="confidence-label">Evidence coverage</span>
-            <div class="meter"><div id="meter-coverage" class="meter-fill"></div></div>
-            <span id="coverage-value" class="confidence-value"></span>
+
+          <div class="example-chips">
+            <span class="example-label">Try:</span>
+            <button type="button" class="example-chip" data-claim="this proposed development site at 26.6631,93.3678 reduced emissions by 40% and has no protected areas nearby">Compound claim, Assam</button>
+            <button type="button" class="example-chip" data-claim="the palm oil expansion at -9.98,-63.0 in Rondonia, Brazil caused no deforestation">Deforestation, Brazil</button>
+            <button type="button" class="example-chip" data-claim="the solar farm proposed near Mandya, Karnataka">Ambiguous location</button>
           </div>
-          <p id="confidence-explanation" class="confidence-explanation"></p>
-        </div>
 
-        <div class="evidence-columns">
-          <div class="evidence-column">
-            <h3>Contradicting evidence</h3>
-            <ul id="contradicting-list" class="evidence-list"></ul>
+          <div id="claim-result-header" class="claim-result-header" hidden>
+            <h1 id="claim-result-title" class="claim-result-title"></h1>
+            <div class="claim-result-meta">
+              <span class="meta-item">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.3"/></svg>
+                <span id="meta-location"></span>
+              </span>
+              <span class="meta-item">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5V20a1 1 0 0 1-1 1h-4v-6H8v6H4a1 1 0 0 1-1-1z"/></svg>
+                <span id="meta-place"></span>
+              </span>
+              <span class="meta-item">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="1.5"/><path d="M3.5 9.5h17M8 3v3M16 3v3"/></svg>
+                <span id="meta-datetime"></span>
+              </span>
+            </div>
           </div>
-          <div class="evidence-column">
-            <h3>Supporting evidence</h3>
-            <ul id="supporting-list" class="evidence-list"></ul>
+
+          <section id="location-panel" class="location-panel panel" hidden>
+            <div class="map-toolbar">
+              <div class="map-mode-toggle">
+                <button type="button" class="map-mode-btn active" data-mode="satellite">Satellite</button>
+                <button type="button" class="map-mode-btn" data-mode="map">Map</button>
+              </div>
+              <div class="map-toolbar-actions">
+                <button id="layers-toggle-btn" type="button" class="map-tool-btn">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3 2 9l10 6 10-6z"/><path d="M2 14l10 6 10-6" stroke-linecap="round"/></svg>
+                  Layers
+                </button>
+                <button id="fullscreen-btn" type="button" class="map-tool-btn map-tool-btn--icon" title="Expand map">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H4v5M15 3h5v5M9 21H4v-5M15 21h5v-5"/></svg>
+                </button>
+              </div>
+            </div>
+            <div id="map-frame" class="map-frame">
+              <div id="map-canvas" class="map"></div>
+              <div id="map-legend-overlay" class="map-legend-overlay">
+                <ul class="map-legend">
+                  <li><span class="legend-swatch" style="background:#a9762c"></span>Land Analysis</li>
+                  <li><span class="legend-swatch" style="background:#2f5d43"></span>Ecology</li>
+                  <li><span class="legend-swatch" style="background:#3a6a8c"></span>Water Risk</li>
+                  <li><span class="legend-swatch" style="background:#7a4fa0"></span>Visual Inspection</li>
+                  <li><span class="legend-swatch" style="background:#1f8a8c"></span>Vegetation Trend</li>
+                  <li><span class="legend-swatch" style="background:#b8860b"></span>Carbon Registry</li>
+                  <li><span class="legend-swatch" style="background:#e5007d"></span>Tree cover loss (UMD/GFW)</li>
+                </ul>
+              </div>
+              <p id="location-caption" class="map-coords-overlay"></p>
+            </div>
+            <div class="map-footer">
+              <h3 class="timelapse-heading">Change over time — Google Earth Timelapse</h3>
+              <div class="timelapse-embed-wrap">
+                <iframe id="timelapse-embed" class="timelapse-embed" title="Google Earth Timelapse" loading="lazy"></iframe>
+              </div>
+              <a id="timelapse-link" class="timelapse-link" href="#" target="_blank" rel="noopener">Open in a new tab instead &rarr;</a>
+            </div>
+          </section>
+
+          <section id="evidence-overview" class="evidence-overview panel" hidden>
+            <h2 class="section-label">Evidence overview</h2>
+            <div class="evidence-cards">
+              <div class="evidence-card">
+                <div class="evidence-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#a9762c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20c8 0 14-6 14-14 0 0-11-2-14 6-1.8 4.6 0 8 0 8z"/><path d="M5 20c0-4 2-8 6-11"/></svg>Land Analysis</div>
+                <p class="evidence-card-sub">Tree cover loss</p>
+                <p id="card-land-value" class="evidence-card-value">—</p>
+                <p id="card-land-context" class="evidence-card-context">—</p>
+              </div>
+              <div class="evidence-card">
+                <div class="evidence-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#1f8a8c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V10"/><path d="M12 10C12 5 8 4 8 4s-1 4 4 6z"/><path d="M12 13c0-4 4-5 4-5s1 4-4 5z"/></svg>Vegetation Trend</div>
+                <p id="card-vegetation-sub" class="evidence-card-sub">NDVI change</p>
+                <p id="card-vegetation-value" class="evidence-card-value">—</p>
+                <p id="card-vegetation-context" class="evidence-card-context">—</p>
+              </div>
+              <div class="evidence-card">
+                <div class="evidence-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#3a6a8c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11.5A6 6 0 0 1 6 14.5C6 10 12 3 12 3z"/></svg>Water Risk</div>
+                <p class="evidence-card-sub">Disaster events</p>
+                <p id="card-water-value" class="evidence-card-value">—</p>
+                <p id="card-water-context" class="evidence-card-context">GDACS</p>
+              </div>
+              <div class="evidence-card">
+                <div class="evidence-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#b8860b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 17a4 4 0 0 1-.5-8 5 5 0 0 1 9.6-1.8A4.5 4.5 0 0 1 17.5 17h-11z"/></svg>Carbon Registry</div>
+                <p class="evidence-card-sub">Registered projects</p>
+                <p id="card-carbon-value" class="evidence-card-value">—</p>
+                <p id="card-carbon-context" class="evidence-card-context">—</p>
+              </div>
+              <div class="evidence-card">
+                <div class="evidence-card-title"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#2f5d43" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></svg>Protected Areas</div>
+                <p class="evidence-card-sub">WDPA</p>
+                <p id="card-ecology-value" class="evidence-card-value">—</p>
+                <p id="card-ecology-context" class="evidence-card-context">—</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="timeline-section" class="timeline-section panel" hidden>
+            <h2 class="section-label">Investigation timeline</h2>
+            <ol id="timeline-steps" class="timeline-steps"></ol>
+          </section>
+
+          <section id="trace" class="trace panel" hidden>
+            <div class="trace-header">
+              <h2 class="section-label">Investigation</h2>
+              <span id="trace-progress" class="trace-progress"></span>
+            </div>
+            <ol id="trace-list" class="trace-list"></ol>
+          </section>
+
+          <section id="verdict" class="verdict panel" hidden>
+            <h2 class="section-label">Verdict</h2>
+
+            <div id="verdict-unresolved" class="unresolved" hidden>
+              <span class="verdict-stamp unresolved-stamp">Unresolved</span>
+              <p id="verdict-unresolved-reason"></p>
+            </div>
+
+            <div id="verdict-resolved" hidden>
+              <div class="verdict-stamp-row">
+                <span id="verdict-stamp" class="verdict-stamp"></span>
+                <span id="verdict-case-id" class="verdict-case-id"></span>
+              </div>
+              <p id="verdict-summary" class="verdict-summary"></p>
+
+              <div class="confidence">
+                <div class="confidence-row">
+                  <span class="confidence-label">Direction</span>
+                  <div class="direction-track">
+                    <div id="direction-marker" class="direction-marker"></div>
+                  </div>
+                  <span id="direction-value" class="confidence-value"></span>
+                </div>
+                <div id="finding-tally-row" class="finding-tally-row" hidden>
+                  <span></span>
+                  <div>
+                    <div class="finding-tally-bar">
+                      <span id="tally-contradicts" class="finding-tally-segment finding-tally-segment--contradicts"></span>
+                      <span id="tally-context" class="finding-tally-segment finding-tally-segment--context"></span>
+                      <span id="tally-supports" class="finding-tally-segment finding-tally-segment--supports"></span>
+                    </div>
+                    <p id="finding-tally-label" class="finding-tally-label"></p>
+                  </div>
+                  <span></span>
+                </div>
+                <div class="confidence-row">
+                  <span class="confidence-label">Evidence coverage</span>
+                  <div class="meter"><div id="meter-coverage" class="meter-fill"></div></div>
+                  <span id="coverage-value" class="confidence-value"></span>
+                </div>
+                <p id="confidence-explanation" class="confidence-explanation"></p>
+              </div>
+
+              <div class="evidence-columns">
+                <div class="evidence-column">
+                  <h3>Contradicting evidence</h3>
+                  <ul id="contradicting-list" class="evidence-list"></ul>
+                </div>
+                <div class="evidence-column">
+                  <h3>Supporting evidence</h3>
+                  <ul id="supporting-list" class="evidence-list"></ul>
+                </div>
+              </div>
+
+              <div id="gaps-section" hidden>
+                <h3>Unverified by available evidence</h3>
+                <ul id="gaps-list" class="evidence-list"></ul>
+              </div>
+
+              <div id="sub-claims-section" hidden>
+                <h3>This claim was broken into parts</h3>
+                <ul id="sub-claims-list" class="sub-claims-list"></ul>
+              </div>
+
+              <p id="sources" class="sources"></p>
+            </div>
+          </section>
+
+        </div>
+      </section>
+
+      <section id="view-saved-reports" class="view" hidden>
+        <div class="view-inner">
+          <h2 class="section-label">Saved reports</h2>
+          <ul id="history-list" class="history-list"></ul>
+        </div>
+      </section>
+
+      <section id="view-layers" class="view" hidden>
+        <div class="view-inner">
+          <h2 class="section-label">Tech stack, layer by layer</h2>
+          <p class="layers-lede">Every layer below is doing real work in every investigation — nothing here is a mockup.</p>
+
+          <div class="iso-section">
+            <div class="iso-tower" aria-hidden="true">
+              <div class="iso-diamond" style="--c: #5ba57e;">
+                <div class="iso-diamond-facet iso-diamond-facet--base"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--under"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-right"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-left"></div>
+              </div>
+              <div class="iso-diamond" style="--c: #4c8f68;">
+                <div class="iso-diamond-facet iso-diamond-facet--base"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--under"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-right"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-left"></div>
+              </div>
+              <div class="iso-diamond" style="--c: #2f5d43;">
+                <div class="iso-diamond-facet iso-diamond-facet--base"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--under"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-right"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-left"></div>
+              </div>
+              <div class="iso-diamond" style="--c: #163826;">
+                <div class="iso-diamond-facet iso-diamond-facet--base"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--under"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-right"></div>
+                <div class="iso-diamond-facet iso-diamond-facet--top-left"></div>
+              </div>
+            </div>
+
+            <div class="iso-label iso-label--right" style="top: 76px;">
+              <span class="iso-connector iso-connector--to-left"></span>
+              <div class="iso-label-body">
+                <div class="layer-ribbon layer-ribbon--delivery">
+                  <span class="layer-ribbon-index">01</span>
+                  <span class="layer-ribbon-title">Delivery</span>
+                </div>
+                <p class="iso-label-desc">Serves the UI and streams each agent's progress to the browser as it happens, not just a spinner-then-answer.</p>
+                <div class="layer-chips">
+                  <span class="layer-chip">FastAPI</span>
+                  <span class="layer-chip">Server-Sent Events</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="iso-label iso-label--left" style="top: 228px;">
+              <div class="iso-label-body">
+                <div class="layer-ribbon layer-ribbon--orchestration">
+                  <span class="layer-ribbon-index">02</span>
+                  <span class="layer-ribbon-title">Orchestration</span>
+                </div>
+                <p class="iso-label-desc">Composes every agent as a SequentialAgent/ParallelAgent graph — location grounding and claim decomposition run concurrently, then seven evidence agents fan out at once via genuine agent-to-agent message handoffs.</p>
+                <div class="layer-chips">
+                  <span class="layer-chip">Google ADK</span>
+                  <span class="layer-chip">ParallelAgent</span>
+                  <span class="layer-chip">A2A messages</span>
+                </div>
+              </div>
+              <span class="iso-connector iso-connector--to-right"></span>
+            </div>
+
+            <div class="iso-label iso-label--right" style="top: 380px;">
+              <span class="iso-connector iso-connector--to-left"></span>
+              <div class="iso-label-body">
+                <div class="layer-ribbon layer-ribbon--reasoning">
+                  <span class="layer-ribbon-index">03</span>
+                  <span class="layer-ribbon-title">Reasoning</span>
+                </div>
+                <p class="iso-label-desc">Every call runs through Vertex AI. Reads satellite imagery directly for visual inspection, then cross-references every piece of evidence against the claim and synthesizes the final verdict.</p>
+                <div class="layer-chips">
+                  <span class="layer-chip">Vertex AI</span>
+                  <span class="layer-chip">Gemini multimodal</span>
+                  <span class="layer-chip">Gemini reasoning</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="iso-label iso-label--left" style="top: 532px;">
+              <div class="iso-label-body">
+                <div class="layer-ribbon layer-ribbon--sources">
+                  <span class="layer-ribbon-index">04</span>
+                  <span class="layer-ribbon-title">Evidence sources</span>
+                </div>
+                <p class="iso-label-desc">Seven independent registries and satellite datasets — no mock data anywhere in the pipeline.</p>
+                <div class="layer-chips">
+                  <span class="layer-chip">Global Forest Watch</span>
+                  <span class="layer-chip">WDPA</span>
+                  <span class="layer-chip">GDACS</span>
+                  <span class="layer-chip">Earth Engine</span>
+                  <span class="layer-chip">Carbonmark</span>
+                  <span class="layer-chip">NASA POWER</span>
+                  <span class="layer-chip">Nominatim</span>
+                </div>
+              </div>
+              <span class="iso-connector iso-connector--to-right"></span>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div id="gaps-section" hidden>
-          <h3>Unverified by available evidence</h3>
-          <ul id="gaps-list" class="evidence-list"></ul>
-        </div>
-
-        <div id="sub-claims-section" hidden>
-          <h3>This claim was broken into parts</h3>
-          <ul id="sub-claims-list" class="sub-claims-list"></ul>
-        </div>
-
-        <p id="sources" class="sources"></p>
-      </div>
-    </section>
-
-    <section id="history" class="history panel" hidden>
-      <h2 class="section-label">Recent investigations</h2>
-      <ul id="history-list" class="history-list"></ul>
-    </section>
+    </main>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

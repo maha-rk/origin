@@ -13,15 +13,35 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import Literal
 
 from google import genai
+from pydantic import BaseModel
 
-from agents.gemini_config import MODEL, generate_json
+from agents.gemini_config import MODEL, generate_structured
 from agents.visual_inspection import VisualInspectionResult
 from data_clients.gdacs_client import WaterRiskQuery
 from data_clients.gfw_client import ProtectedArea, TreeCoverLossYear
 
 RELATIONS = {"supports", "contradicts", "context", "insufficient_data"}
+
+
+class _FindingSchema(BaseModel):
+    sub_claim: str
+    evidence_source: str
+    relation: Literal["supports", "contradicts", "context", "insufficient_data"]
+    explanation: str
+    citation: str
+
+
+class _GapSchema(BaseModel):
+    sub_claim: str
+    gap: str
+
+
+class _CrossReferenceSchema(BaseModel):
+    findings: list[_FindingSchema]
+    gaps: list[_GapSchema]
 
 
 @dataclass
@@ -291,15 +311,8 @@ already correct in the data you don't need to transcribe it.
 If the evidence dict is empty, return no findings and a gap noting that no
 evidence was available for this claim/location.
 
-Respond with strict JSON only, no markdown fences, in this exact shape:
-{{
-  "findings": [
-    {{"sub_claim": "<must exactly match one of the sub-claims above>", "evidence_source": "...", "relation": "supports|contradicts|context|insufficient_data", "explanation": "...", "citation": "..."}}
-  ],
-  "gaps": [
-    {{"sub_claim": "<must exactly match one of the sub-claims above>", "gap": "..."}}
-  ]
-}}
+Every "sub_claim" value, in both findings and gaps, must exactly match one
+of the sub-claims listed above.
 
 For "evidence_source", always use the exact string in that evidence
 category's "source" field below (e.g. "WDPA — World Database on Protected
@@ -310,7 +323,7 @@ pipeline used to organize the evidence.
 Claim and evidence:
 {json.dumps(evidence_bundle, indent=2)}"""
 
-    data = generate_json(client, MODEL, prompt)
+    data = generate_structured(client, MODEL, prompt, _CrossReferenceSchema)
     # Defensive .get() rather than direct indexing: a single malformed
     # finding item (missing a key) shouldn't crash the whole investigation
     # when the other findings are perfectly usable. sub_claim falls back to
