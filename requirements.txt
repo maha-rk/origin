@@ -8,3 +8,4 @@ python-dotenv
 mcp
 earthengine-api
 certifi
+pytest
