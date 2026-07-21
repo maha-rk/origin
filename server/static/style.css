@@ -477,6 +477,12 @@ body {
   stroke: var(--ink);
   stroke-width: 3;
   stroke-linecap: round;
+  /* transform-box makes transform-origin's px values resolve against the
+     SVG viewBox coordinate system explicitly — without it, some browsers
+     default to the needle line's own bounding box instead, rotating it
+     around the wrong point (the rotation angle ends up correct but the
+     needle visibly swings around an offset pivot). */
+  transform-box: view-box;
   transform-origin: 100px 100px;
   transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
