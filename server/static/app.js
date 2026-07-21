@@ -14,7 +14,7 @@ const resolvedBox = document.getElementById("verdict-resolved");
 const verdictStamp = document.getElementById("verdict-stamp");
 const verdictCaseId = document.getElementById("verdict-case-id");
 const verdictSummary = document.getElementById("verdict-summary");
-const meterDirection = document.getElementById("meter-direction");
+const gaugeNeedle = document.getElementById("gauge-needle");
 const meterCoverage = document.getElementById("meter-coverage");
 const directionValue = document.getElementById("direction-value");
 const coverageValue = document.getElementById("coverage-value");
@@ -50,6 +50,28 @@ const RADIUS_COLORS = {
   "Vegetation Trend": "#1f8a8c",
   "Carbon Registry": "#b8860b",
 };
+
+// Same colors as RADIUS_COLORS/the map legend, matched against evidence
+// citation text ("... (source: X)") so a reader can recognize where a
+// piece of evidence came from without reading the citation itself. Climate
+// Trend has no map radius circle (it's a point query, not an area search)
+// but still gets a tag color here for the same recognizability.
+const SOURCE_TAG_COLORS = [
+  { match: /global forest watch/i, color: "#a9762c" },
+  { match: /wdpa|world database on protected areas/i, color: "#2f5d43" },
+  { match: /gdacs/i, color: "#3a6a8c" },
+  { match: /gemini vision/i, color: "#7a4fa0" },
+  { match: /earth engine/i, color: "#1f8a8c" },
+  { match: /verra|gold standard|puro|carbonmark/i, color: "#b8860b" },
+  { match: /nasa power/i, color: "#c9622a" },
+];
+
+function sourceColorFor(text) {
+  for (const { match, color } of SOURCE_TAG_COLORS) {
+    if (match.test(text)) return color;
+  }
+  return null;
+}
 
 let map = null;
 let siteMarker = null;
@@ -281,7 +303,16 @@ function fillList(el, items, emptyText) {
   }
   for (const item of items) {
     const li = document.createElement("li");
-    li.textContent = item;
+    const color = sourceColorFor(item);
+    if (color) {
+      const tag = document.createElement("span");
+      tag.className = "source-tag";
+      tag.style.background = color;
+      li.appendChild(tag);
+    }
+    const textEl = document.createElement("span");
+    textEl.textContent = item;
+    li.appendChild(textEl);
     el.appendChild(li);
   }
 }
@@ -328,8 +359,10 @@ function renderVerdict(verdict) {
   const direction = verdict.confidence?.direction_score ?? 0.5;
   const coverage = verdict.confidence?.evidence_coverage ?? 0;
 
-  meterDirection.style.width = `${Math.round(direction * 100)}%`;
-  meterDirection.className = `meter-fill ${directionStatusClass(direction)}`;
+  // Needle rests pointing straight up at direction=0.5 (neutral); sweeps
+  // to fully left (-90deg) at 0 (contradicts) and fully right (+90deg) at
+  // 1 (supports) — a full 180deg sweep matching the gauge's semicircle.
+  gaugeNeedle.style.transform = `rotate(${180 * direction - 90}deg)`;
   meterCoverage.style.width = `${Math.round(coverage * 100)}%`;
   directionValue.textContent = direction.toFixed(2);
   coverageValue.textContent = `${Math.round(coverage * 100)}%`;

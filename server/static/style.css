@@ -301,6 +301,34 @@ body {
   animation: rise 0.4s ease;
 }
 
+.unresolved {
+  position: relative;
+  overflow: hidden;
+  padding: 0.5rem 0;
+}
+
+/* A faint diagonal watermark makes an inconclusive result still read as a
+   live, open case rather than a dead-end/error state. */
+.unresolved::before {
+  content: "UNRESOLVED";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-16deg);
+  font-family: var(--sans);
+  font-size: 3.4rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--contradict);
+  opacity: 0.07;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.unresolved > * {
+  position: relative;
+}
+
 .unresolved p {
   color: var(--contradict);
   font-size: 1.02rem;
@@ -411,20 +439,50 @@ body {
   background: var(--ink-faint);
 }
 
-/* Midpoint tick, sitting just below the bar rather than cutting through
-   it — anchors what "50%" visually means (neutral). A mark drawn inside
-   the bar would lose contrast against whichever fill color happens to sit
-   under it; below the bar it's always against the page background. */
-.meter.has-midpoint::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 100%;
-  margin-top: 3px;
-  width: 1px;
-  height: 4px;
-  background: var(--ink-faint);
-  transform: translateX(-50%);
+/* Direction gauge — a needle sweeping between "contradicts" and
+   "supports" is a more direct visual metaphor for a polarized score than
+   a bar, and reads faster at a glance than a decimal. The three bands
+   use the exact same 0.35/0.65 thresholds as directionStatusClass() in
+   app.js so the gauge and the numeric label never disagree. */
+.gauge-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.direction-gauge {
+  overflow: visible;
+}
+
+.gauge-band {
+  fill: none;
+  stroke-width: 14;
+}
+
+.gauge-band--contradicts {
+  stroke: var(--contradict);
+  opacity: 0.82;
+}
+
+.gauge-band--mixed {
+  stroke: var(--ink-faint);
+  opacity: 0.5;
+}
+
+.gauge-band--supports {
+  stroke: var(--support);
+  opacity: 0.82;
+}
+
+.gauge-needle {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform-origin: 100px 100px;
+  transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.gauge-pivot {
+  fill: var(--ink);
 }
 
 .confidence-value {
@@ -469,10 +527,23 @@ body {
 }
 
 .evidence-list li {
+  display: flex;
+  align-items: flex-start;
   font-size: 0.92rem;
   line-height: 1.5;
   padding: 0.7rem 0.85rem;
   border-radius: 0;
+}
+
+/* Matches the map legend's per-agent colors, so a source is recognizable
+   at a glance here without reading the "(source: ...)" citation text. */
+.source-tag {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin: 0.4em 0.6rem 0 0;
+  border-radius: 50%;
 }
 
 .evidence-column:nth-child(1) .evidence-list li {
@@ -497,10 +568,35 @@ body {
   margin-bottom: 2rem;
 }
 
+/* A faint diagonal-hatch background plus a stamped "UNVERIFIED" tag reads
+   as an open case-file item — not evidence ORIGIN is concealing (the
+   section heading already makes that clear), just a claim the available
+   evidence couldn't speak to either way. */
 #gaps-section .evidence-list li {
-  background: #fff;
+  background: repeating-linear-gradient(
+    135deg,
+    #fff,
+    #fff 8px,
+    #f2efe4 8px,
+    #f2efe4 16px
+  );
   border: 1px solid var(--rule);
   color: var(--ink-soft);
+  position: relative;
+  padding-left: 6.75rem;
+}
+
+#gaps-section .evidence-list li::before {
+  content: "UNVERIFIED";
+  position: absolute;
+  left: 0.7rem;
+  top: 0.7rem;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.4rem;
 }
 
 #sub-claims-section {

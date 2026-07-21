@@ -75,7 +75,15 @@
         <div class="confidence">
           <div class="confidence-row">
             <span class="confidence-label">Direction</span>
-            <div id="meter-direction-track" class="meter has-midpoint"><div id="meter-direction" class="meter-fill"></div></div>
+            <div class="gauge-wrap">
+              <svg class="direction-gauge" viewBox="0 0 200 115" width="200" height="115" aria-hidden="true">
+                <path d="M 10,100 A 90,90 0 0 1 59.1,19.8" class="gauge-band gauge-band--contradicts"></path>
+                <path d="M 59.1,19.8 A 90,90 0 0 1 140.9,19.8" class="gauge-band gauge-band--mixed"></path>
+                <path d="M 140.9,19.8 A 90,90 0 0 1 190,100" class="gauge-band gauge-band--supports"></path>
+                <line id="gauge-needle" x1="100" y1="100" x2="100" y2="28" class="gauge-needle"></line>
+                <circle cx="100" cy="100" r="5" class="gauge-pivot"></circle>
+              </svg>
+            </div>
             <span id="direction-value" class="confidence-value"></span>
           </div>
           <div class="confidence-row">
