@@ -143,6 +143,31 @@ There's also a CLI if you just want one claim without the UI:
 python3 -m orchestrator.pipeline "the palm oil expansion at -9.98,-63.0 in Rondonia, Brazil caused no deforestation"
 ```
 
+## Deploying it
+
+`render.yaml` is already set up for [Render](https://render.com)'s free
+tier — no card required to sign up. To deploy:
+
+1. Push this repo to your own GitHub account (fork it, or just push to a
+   repo you own).
+2. On Render, choose **New > Blueprint** and point it at that repo. It'll
+   pick up `render.yaml` automatically.
+3. Render will ask for `GEMINI_API_KEY` and `GFW_API_KEY` — paste the same
+   values from your `.env`.
+4. Deploy. First load after the service has been idle takes 30-60 seconds
+   to wake back up — that's Render's free tier sleeping after 15 minutes
+   of no traffic, not a bug.
+
+Two things worth knowing about the free tier specifically: `EARTH_ENGINE_PROJECT`
+is deliberately left unset in `render.yaml`, since Earth Engine's OAuth
+credential is a local file `earthengine authenticate` writes to your own
+machine, not something that travels with the repo — Vegetation Trend just
+reports "no signal" in the deployed version, the same graceful skip it
+does for anyone who hasn't run that command locally either. And the SQLite
+claims log resets on every new deploy (no persistent disk on the free
+tier), so Saved Reports only holds what's been investigated since the
+last push, not a permanent history.
+
 ## Project structure
 
 ```
