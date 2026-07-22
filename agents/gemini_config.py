@@ -31,9 +31,28 @@ RETRYABLE_CODES = {429, 503}
 MAX_ATTEMPTS = 5
 BASE_DELAY_SECONDS = 4
 
+# Express Mode (api_key + vertexai=True) never sets an explicit Vertex AI
+# region — the SDK forbids passing `location` alongside `api_key` at all
+# (raises ValueError), so every request goes to Google's global endpoint
+# and Google's backend picks a region on its own. Confirmed this actually
+# varies by network origin: working locally, this same code 404'd in
+# production ("publisher model ... was not found") because the deployed
+# server's requests were getting routed to a region without this model.
+# There's no supported client parameter to pin a region in this auth mode
+# — confirmed by reading google-genai's _api_client.py, where even setting
+# http_options.base_url gets silently rebuilt from `self.location` (which
+# stays None in this auth mode) before the request goes out. The only
+# thing that actually sticks is overwriting the already-constructed
+# client's http_options after the fact, below.
+_VERTEX_REGION = "us-central1"
+
 
 def make_client(api_key: str) -> genai.Client:
-    return genai.Client(api_key=api_key, vertexai=True)
+    client = genai.Client(api_key=api_key, vertexai=True)
+    client._api_client._http_options.base_url = (
+        f"https://{_VERTEX_REGION}-aiplatform.googleapis.com/"
+    )
+    return client
 
 
 def generate_with_retry(
